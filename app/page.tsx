@@ -14,10 +14,14 @@ export default function SoccerStopwatch() {
   const [isStreamingMode, setIsStreamingMode] = useState(false)
   const [isRemoteMode, setIsRemoteMode] = useState(false)
 
+  // 両方のタイマーを初期化
   const localTimer = useStopwatch()
   const remoteTimer = useRemoteTimer()
+  
+  // 現在アクティブなタイマーを選択
   const timer = isRemoteMode ? remoteTimer : localTimer
 
+  // URL パラメータから初期状態を設定
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search)
     if (urlParams.get("overlay") === "true" || urlParams.get("streaming") === "true") {
@@ -28,6 +32,7 @@ export default function SoccerStopwatch() {
     }
   }, [])
 
+  // フルスクリーン切り替え
   const toggleFullscreen = async () => {
     try {
       if (!document.fullscreenElement) {
@@ -42,6 +47,7 @@ export default function SoccerStopwatch() {
     }
   }
 
+  // ストリーミングモード切り替え
   const toggleStreamingMode = () => {
     setIsStreamingMode(!isStreamingMode)
     const url = new URL(window.location.href)
@@ -56,17 +62,23 @@ export default function SoccerStopwatch() {
     window.history.replaceState({}, "", url.toString())
   }
 
+  // リモートモード切り替え
   const toggleRemoteMode = () => {
-    setIsRemoteMode(!isRemoteMode)
+    const newRemoteMode = !isRemoteMode
+    setIsRemoteMode(newRemoteMode)
+    
     const url = new URL(window.location.href)
-    if (!isRemoteMode) {
+    if (newRemoteMode) {
       url.searchParams.set("remote", "true")
     } else {
       url.searchParams.delete("remote")
     }
     window.history.replaceState({}, "", url.toString())
+    
+    console.log("Remote mode toggled:", newRemoteMode) // デバッグログ
   }
 
+  // フルスクリーン状態の監視
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement)
@@ -76,32 +88,42 @@ export default function SoccerStopwatch() {
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
   }, [])
 
+  // キーボードショートカット
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // フォーカスされた入力要素がある場合はキーボードショートカットを無効にする
+      // 入力要素にフォーカスがある場合はスキップ
       if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
         return
       }
 
-      if (e.code === "Space") {
-        e.preventDefault()
-        if (timer.isRunning) {
-          timer.pause()
-        } else {
-          timer.start()
-        }
-      } else if (e.code === "KeyR") {
-        e.preventDefault()
-        timer.reset()
-      } else if (e.code === "KeyF") {
-        e.preventDefault()
-        toggleFullscreen()
-      } else if (e.code === "KeyS") {
-        e.preventDefault()
-        toggleStreamingMode()
-      } else if (e.code === "KeyW") {
-        e.preventDefault()
-        toggleRemoteMode()
+      switch (e.code) {
+        case "Space":
+          e.preventDefault()
+          if (timer.isRunning) {
+            console.log("Keyboard: Pausing timer")
+            timer.pause()
+          } else {
+            console.log("Keyboard: Starting timer")
+            timer.start()
+          }
+          break
+        case "KeyR":
+          e.preventDefault()
+          console.log("Keyboard: Resetting timer")
+          timer.reset()
+          break
+        case "KeyF":
+          e.preventDefault()
+          toggleFullscreen()
+          break
+        case "KeyS":
+          e.preventDefault()
+          toggleStreamingMode()
+          break
+        case "KeyW":
+          e.preventDefault()
+          toggleRemoteMode()
+          break
       }
     }
 
@@ -109,17 +131,27 @@ export default function SoccerStopwatch() {
     return () => window.removeEventListener("keydown", handleKeyPress)
   }, [timer.isRunning, timer.start, timer.pause, timer.reset])
 
+  // ストリーミングモード表示
   if (isStreamingMode) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <TimerDisplay elapsed={timer.elapsed} isFullscreen={true} isStreamingMode={true} />
+        {/* デバッグ情報 */}
+        <div className="fixed bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded text-xs">
+          Mode: {isRemoteMode ? 'Remote' : 'Local'} | 
+          Running: {timer.isRunning ? 'Yes' : 'No'} | 
+          Elapsed: {Math.floor(timer.elapsed / 1000)}s
+          {isRemoteMode && ` | Connected: ${remoteTimer.isConnected ? 'Yes' : 'No'}`}
+        </div>
       </div>
     )
   }
 
+  // メイン表示
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 flex items-center justify-center p-2 sm:p-4">
       <div className="w-full max-w-sm sm:max-w-md lg:max-w-lg xl:max-w-xl mx-auto space-y-4 sm:space-y-6">
+        {/* ツールバー */}
         <div className="flex justify-end gap-2">
           <Button
             onClick={toggleRemoteMode}
@@ -141,6 +173,7 @@ export default function SoccerStopwatch() {
           </Button>
         </div>
 
+        {/* リモート接続状態表示 */}
         {isRemoteMode && (
           <div className="text-center">
             <div
@@ -163,6 +196,7 @@ export default function SoccerStopwatch() {
           </div>
         )}
 
+        {/* タイマー表示 */}
         <div className="rounded-xl shadow-2xl p-4 sm:p-6 lg:p-8 text-center transition-all duration-300 bg-white">
           <div className="mb-4 sm:mb-6">
             <TimerDisplay elapsed={timer.elapsed} isFullscreen={isFullscreen} />
@@ -170,6 +204,7 @@ export default function SoccerStopwatch() {
           <ProgressBar elapsed={timer.elapsed} isFullscreen={isFullscreen} />
         </div>
 
+        {/* コントロール */}
         <Controls
           isRunning={timer.isRunning}
           onStart={timer.start}
@@ -183,8 +218,16 @@ export default function SoccerStopwatch() {
           isRemoteMode={isRemoteMode}
         />
 
+        {/* ヘルプテキスト */}
         <div className="text-center text-xs sm:text-sm text-gray-600">
           <p>Keyboard: Space = Start/Pause, R = Reset, F = Fullscreen, S = Streaming, W = Remote</p>
+          {/* デバッグ情報 */}
+          <div className="mt-2 text-xs text-gray-400">
+            Mode: {isRemoteMode ? 'Remote' : 'Local'} | 
+            Running: {timer.isRunning ? 'Yes' : 'No'} | 
+            Elapsed: {Math.floor(timer.elapsed / 1000)}s
+            {isRemoteMode && ` | Connected: ${remoteTimer.isConnected ? 'Yes' : 'No'}`}
+          </div>
         </div>
       </div>
     </div>

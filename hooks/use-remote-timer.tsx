@@ -2,52 +2,56 @@
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import { database } from "@/lib/firebase"
-import { ref, onValue, set } from "firebase/database"
+import { ref, onValue, set, serverTimestamp } from "firebase/database"
 
-interface TimerState {
-  elapsed: number
+interface FirebaseTimerState {
+  baseElapsed: number // 基準の経過時間
   isRunning: boolean
+  startTimestamp: number // サーバーのタイムスタンプまたはローカル時刻
   lastUpdate: number
   sessionId: string
-  baseTime: number // 基準時間を追加
 }
 
 export function useRemoteTimer() {
-  const [timerState, setTimerState] = useState<TimerState>({
-    elapsed: 0,
+  const [remoteState, setRemoteState] = useState<FirebaseTimerState>({
+    baseElapsed: 0,
     isRunning: false,
+    startTimestamp: 0,
     lastUpdate: Date.now(),
     sessionId: "",
-    baseTime: 0,
   })
-  const [displayElapsed, setDisplayElapsed] = useState(0)
+  
+  const [currentElapsed, setCurrentElapsed] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isUpdatingRef = useRef(false) // Firebase更新中フラグ
 
   // リアルタイム表示更新関数
-  const updateDisplayElapsed = useCallback(() => {
-    if (timerState.isRunning && timerState.lastUpdate) {
+  const updateCurrentElapsed = useCallback(() => {
+    if (remoteState.isRunning && remoteState.startTimestamp > 0) {
       const now = Date.now()
-      const currentElapsed = timerState.baseTime + (now - timerState.lastUpdate)
-      setDisplayElapsed(Math.max(0, currentElapsed))
+      const elapsed = remoteState.baseElapsed + (now - remoteState.startTimestamp)
+      setCurrentElapsed(Math.max(0, elapsed))
     } else {
-      setDisplayElapsed(Math.max(0, timerState.baseTime))
+      setCurrentElapsed(Math.max(0, remoteState.baseElapsed))
     }
-  }, [timerState.isRunning, timerState.lastUpdate, timerState.baseTime])
+  }, [remoteState.isRunning, remoteState.baseElapsed, remoteState.startTimestamp])
 
-  // isRunning状態に基づいてリアルタイム更新を管理
+  // リアルタイム更新の管理
   useEffect(() => {
-    if (timerState.isRunning) {
-      // タイマーが動いている場合：リアルタイム更新を開始
-      intervalRef.current = setInterval(updateDisplayElapsed, 50) // 50ms間隔
-      updateDisplayElapsed() // 即座に一度更新
+    // インターバルをクリア
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
+    }
+
+    if (remoteState.isRunning) {
+      // タイマーが動いている時は高頻度で更新
+      intervalRef.current = setInterval(updateCurrentElapsed, 50) // 50ms間隔
+      updateCurrentElapsed() // 即座に一度実行
     } else {
-      // タイマーが停止している場合：リアルタイム更新を停止
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
-      setDisplayElapsed(Math.max(0, timerState.baseTime))
+      // 停止中は一度だけ更新
+      updateCurrentElapsed()
     }
 
     return () => {
@@ -56,124 +60,178 @@ export function useRemoteTimer() {
         intervalRef.current = null
       }
     }
-  }, [timerState.isRunning, updateDisplayElapsed, timerState.baseTime])
+  }, [remoteState.isRunning, updateCurrentElapsed])
 
-  // Firebase接続とデータ同期
+  // Firebase接続とリアルタイム同期
   useEffect(() => {
     const timerRef = ref(database, "timer")
 
     const unsubscribe = onValue(
       timerRef,
       (snapshot) => {
+        // 自分が更新中の場合は無視（無限ループ防止）
+        if (isUpdatingRef.current) {
+          return
+        }
+
         try {
-          const state = snapshot.val()
-          if (state) {
-            // Firebase からデータを取得して状態を更新
-            const newTimerState: TimerState = {
-              elapsed: Math.max(0, state.elapsed || 0),
-              isRunning: Boolean(state.isRunning),
-              lastUpdate: state.lastUpdate || Date.now(),
-              sessionId: state.sessionId || "",
-              baseTime: Math.max(0, state.baseTime || state.elapsed || 0), // 基準時間
+          const data = snapshot.val()
+          
+          if (data) {
+            const newState: FirebaseTimerState = {
+              baseElapsed: Math.max(0, data.baseElapsed || 0),
+              isRunning: Boolean(data.isRunning),
+              startTimestamp: data.startTimestamp || Date.now(),
+              lastUpdate: data.lastUpdate || Date.now(),
+              sessionId: data.sessionId || "",
             }
             
-            setTimerState(newTimerState)
+            setRemoteState(newState)
             setIsConnected(true)
+            
+            console.log("Firebase state updated:", newState) // デバッグログ
           } else {
-            // 初期状態を作成
-            const initialState: TimerState = {
-              elapsed: 0,
+            // 初期データがない場合は作成
+            const initialState: FirebaseTimerState = {
+              baseElapsed: 0,
               isRunning: false,
+              startTimestamp: 0,
               lastUpdate: Date.now(),
               sessionId: Math.random().toString(36).substr(2, 9),
-              baseTime: 0,
             }
-            set(timerRef, initialState)
-            setTimerState(initialState)
-            setIsConnected(true)
+            
+            isUpdatingRef.current = true
+            set(timerRef, initialState).then(() => {
+              isUpdatingRef.current = false
+              setRemoteState(initialState)
+              setIsConnected(true)
+            }).catch((error) => {
+              isUpdatingRef.current = false
+              console.error("Failed to initialize timer:", error)
+            })
           }
         } catch (error) {
-          console.error("Firebase connection error:", error)
+          console.error("Firebase data processing error:", error)
           setIsConnected(false)
         }
       },
       (error) => {
         console.error("Firebase listener error:", error)
         setIsConnected(false)
-      },
+      }
     )
 
-    return () => unsubscribe()
+    return () => {
+      unsubscribe()
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
   }, [])
 
+  // コマンド送信関数
   const sendCommand = useCallback(
     async (action: string) => {
+      if (isUpdatingRef.current) {
+        console.log("Update in progress, skipping...")
+        return
+      }
+
       try {
+        isUpdatingRef.current = true
         const timerRef = ref(database, "timer")
         const now = Date.now()
 
-        let newState: Partial<TimerState> = {}
+        let newState: Partial<FirebaseTimerState>
 
         switch (action) {
           case "start":
-            if (!timerState.isRunning) {
-              // 開始時：現在の基準時間を保持し、lastUpdateを現在時刻に設定
+            if (!remoteState.isRunning) {
+              // 開始：現在の累積時間を基準として、新しい開始時刻を設定
               newState = {
+                baseElapsed: remoteState.baseElapsed,
                 isRunning: true,
+                startTimestamp: now,
                 lastUpdate: now,
-                baseTime: timerState.baseTime,
-                elapsed: timerState.baseTime,
+                sessionId: remoteState.sessionId,
               }
+              console.log("Starting timer with state:", newState)
+            } else {
+              isUpdatingRef.current = false
+              return
             }
             break
-            
+
           case "pause":
-            if (timerState.isRunning) {
-              // 一時停止時：現在の経過時間を計算して基準時間として保存
-              let currentElapsed = timerState.baseTime
-              if (timerState.lastUpdate) {
-                currentElapsed += now - timerState.lastUpdate
-              }
+            if (remoteState.isRunning && remoteState.startTimestamp > 0) {
+              // 一時停止：現在の経過時間を計算して基準時間として保存
+              const currentElapsedTime = remoteState.baseElapsed + (now - remoteState.startTimestamp)
               
               newState = {
-                elapsed: Math.max(0, currentElapsed),
+                baseElapsed: Math.max(0, currentElapsedTime),
                 isRunning: false,
+                startTimestamp: 0,
                 lastUpdate: now,
-                baseTime: Math.max(0, currentElapsed),
+                sessionId: remoteState.sessionId,
               }
+              console.log("Pausing timer with state:", newState)
+            } else {
+              isUpdatingRef.current = false
+              return
             }
             break
-            
+
           case "reset":
             newState = {
-              elapsed: 0,
+              baseElapsed: 0,
               isRunning: false,
+              startTimestamp: 0,
               lastUpdate: now,
-              baseTime: 0,
+              sessionId: remoteState.sessionId,
             }
+            console.log("Resetting timer with state:", newState)
             break
+
+          default:
+            isUpdatingRef.current = false
+            return
         }
 
-        if (Object.keys(newState).length > 0) {
-          await set(timerRef, {
-            ...timerState,
-            ...newState,
-          })
-        }
+        await set(timerRef, newState)
+        console.log(`Command ${action} sent successfully`)
+        
+        // 短い遅延後にフラグをクリア
+        setTimeout(() => {
+          isUpdatingRef.current = false
+        }, 100)
+
       } catch (error) {
         console.error("Failed to send command:", error)
+        isUpdatingRef.current = false
       }
     },
-    [timerState],
+    [remoteState]
   )
 
-  const start = useCallback(() => sendCommand("start"), [sendCommand])
-  const pause = useCallback(() => sendCommand("pause"), [sendCommand])
-  const reset = useCallback(() => sendCommand("reset"), [sendCommand])
+  const start = useCallback(() => {
+    console.log("Start command triggered")
+    sendCommand("start")
+  }, [sendCommand])
+
+  const pause = useCallback(() => {
+    console.log("Pause command triggered")
+    sendCommand("pause")
+  }, [sendCommand])
+
+  const reset = useCallback(() => {
+    console.log("Reset command triggered")
+    sendCommand("reset")
+  }, [sendCommand])
 
   return {
-    elapsed: Math.max(0, displayElapsed),
-    isRunning: timerState.isRunning,
+    elapsed: Math.max(0, currentElapsed),
+    isRunning: remoteState.isRunning,
     isConnected,
     start,
     pause,

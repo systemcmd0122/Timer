@@ -7,7 +7,7 @@ export function useStopwatch() {
   const [isRunning, setIsRunning] = useState(false)
   const startTimeRef = useRef<number | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const baseTimeRef = useRef(0) // 基準時間（一時停止時に累積される時間）
+  const baseTimeRef = useRef(0) // 基準時間（累積時間）
 
   // リアルタイム更新関数
   const updateElapsed = useCallback(() => {
@@ -18,23 +18,24 @@ export function useStopwatch() {
     }
   }, [isRunning])
 
-  // isRunning の状態に応じてインターバルを設定/クリア
+  // isRunning状態に応じてインターバルを管理
   useEffect(() => {
-    if (isRunning) {
-      // タイマー開始時にインターバルを設定
-      intervalRef.current = setInterval(updateElapsed, 50) // 50ms間隔で更新（スムーズな表示）
-      
-      // 即座に一度更新
-      updateElapsed()
-    } else {
-      // タイマー停止時にインターバルをクリア
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current)
-        intervalRef.current = null
-      }
+    // 既存のインターバルをクリア
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
     }
 
-    // クリーンアップ関数
+    if (isRunning) {
+      // タイマー開始時にリアルタイム更新を開始
+      intervalRef.current = setInterval(updateElapsed, 50) // 50ms間隔でスムーズ更新
+      updateElapsed() // 即座に一度実行
+    } else {
+      // タイマー停止時は現在の基準時間を表示
+      setElapsed(Math.max(0, baseTimeRef.current))
+    }
+
+    // クリーンアップ
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
@@ -48,24 +49,24 @@ export function useStopwatch() {
       const now = Date.now()
       startTimeRef.current = now
       setIsRunning(true)
+      console.log("Local timer started") // デバッグログ
     }
   }, [isRunning])
 
   const pause = useCallback(() => {
-    if (isRunning) {
-      if (startTimeRef.current !== null) {
-        const now = Date.now()
-        // 現在の経過時間を基準時間に追加
-        baseTimeRef.current += now - startTimeRef.current
-        setElapsed(Math.max(0, baseTimeRef.current))
-      }
+    if (isRunning && startTimeRef.current !== null) {
+      const now = Date.now()
+      // 現在の経過時間を基準時間に追加
+      baseTimeRef.current += now - startTimeRef.current
+      setElapsed(Math.max(0, baseTimeRef.current))
       startTimeRef.current = null
       setIsRunning(false)
+      console.log("Local timer paused, elapsed:", baseTimeRef.current) // デバッグログ
     }
   }, [isRunning])
 
   const reset = useCallback(() => {
-    // インターバルをクリア
+    // インターバルクリア
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
@@ -76,6 +77,7 @@ export function useStopwatch() {
     setIsRunning(false)
     startTimeRef.current = null
     baseTimeRef.current = 0
+    console.log("Local timer reset") // デバッグログ
   }, [])
 
   const addMinute = useCallback(() => {
@@ -89,13 +91,14 @@ export function useStopwatch() {
       baseTimeRef.current += minuteInMs
       setElapsed(Math.max(0, baseTimeRef.current))
     }
+    console.log("Added 1 minute, new base time:", baseTimeRef.current) // デバッグログ
   }, [isRunning])
 
   const subtractMinute = useCallback(() => {
     const minuteInMs = 60 * 1000
     
     if (isRunning && startTimeRef.current !== null) {
-      // タイマーが動いている場合：開始時刻を1分後にずらす（ただし現在時刻を超えない）
+      // タイマーが動いている場合：開始時刻を調整
       const now = Date.now()
       const currentElapsed = baseTimeRef.current + (now - startTimeRef.current)
       const newElapsed = Math.max(0, currentElapsed - minuteInMs)
@@ -107,21 +110,23 @@ export function useStopwatch() {
       baseTimeRef.current = Math.max(0, baseTimeRef.current - minuteInMs)
       setElapsed(baseTimeRef.current)
     }
+    console.log("Subtracted 1 minute, new base time:", baseTimeRef.current) // デバッグログ
   }, [isRunning])
 
   const jumpTo = useCallback((targetMs: number) => {
     const clampedTarget = Math.max(0, targetMs)
     
     if (isRunning && startTimeRef.current !== null) {
-      // タイマーが動いている場合：新しい基準時間を設定し、開始時刻を現在時刻に設定
+      // タイマーが動いている場合
       const now = Date.now()
       baseTimeRef.current = clampedTarget
       startTimeRef.current = now
     } else {
-      // タイマーが停止している場合：基準時間を直接設定
+      // タイマーが停止している場合
       baseTimeRef.current = clampedTarget
       setElapsed(clampedTarget)
     }
+    console.log("Jumped to:", clampedTarget, "new base time:", baseTimeRef.current) // デバッグログ
   }, [isRunning])
 
   return {

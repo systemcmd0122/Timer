@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app"
-import { getDatabase } from "firebase/database"
+import { getDatabase, connectDatabaseEmulator } from "firebase/database"
 
 const firebaseConfig = {
   apiKey: "AIzaSyCUP4ghalS-zHGHglgN0sgQcO5mAitEBZQ",
@@ -12,5 +12,13 @@ const firebaseConfig = {
   measurementId: "G-GYWCGHT4BT",
 }
 
+// Firebaseアプリを初期化
 const app = initializeApp(firebaseConfig)
+
+// Realtime Databaseを取得
 export const database = getDatabase(app)
+
+// 開発環境でエミュレータを使用する場合（オプション）
+// if (process.env.NODE_ENV === 'development') {
+//   connectDatabaseEmulator(database, 'localhost', 9000)
+// }
