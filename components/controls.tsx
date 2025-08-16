@@ -1,5 +1,6 @@
 "use client"
 
+import React, { memo } from "react"
 import { Button } from "@/components/ui/button"
 import { Play, Pause, RotateCcw, Plus, Minus } from "lucide-react"
 
@@ -16,7 +17,7 @@ interface ControlsProps {
   isRemoteMode?: boolean
 }
 
-export function Controls({
+const Controls = memo<ControlsProps>(({
   isRunning,
   onStart,
   onPause,
@@ -27,7 +28,7 @@ export function Controls({
   onJumpTo90,
   isFullscreen = false,
   isRemoteMode = false,
-}: ControlsProps) {
+}) => {
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* Primary Controls */}
@@ -35,7 +36,7 @@ export function Controls({
         <Button
           onClick={isRunning ? onPause : onStart}
           size="lg"
-          className="flex-1 h-12 sm:h-14 lg:h-16 text-base sm:text-lg transition-all duration-300"
+          className="flex-1 h-12 sm:h-14 lg:h-16 text-base sm:text-lg transition-all duration-300 will-change-transform"
           variant={isRunning ? "destructive" : "default"}
         >
           {isRunning ? (
@@ -55,7 +56,7 @@ export function Controls({
           onClick={onReset}
           size="lg"
           variant="outline"
-          className="h-12 sm:h-14 lg:h-16 px-4 sm:px-6 bg-transparent"
+          className="h-12 sm:h-14 lg:h-16 px-4 sm:px-6 bg-transparent transition-all duration-300 will-change-transform"
         >
           <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5" />
         </Button>
@@ -69,7 +70,7 @@ export function Controls({
               onClick={onSubtractMinute}
               variant="outline"
               size="lg"
-              className="h-10 sm:h-12 text-sm sm:text-base bg-transparent"
+              className="h-10 sm:h-12 text-sm sm:text-base bg-transparent transition-all duration-300 will-change-transform"
             >
               <Minus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />1 min
             </Button>
@@ -78,7 +79,7 @@ export function Controls({
               onClick={onAddMinute}
               variant="outline"
               size="lg"
-              className="h-10 sm:h-12 text-sm sm:text-base bg-transparent"
+              className="h-10 sm:h-12 text-sm sm:text-base bg-transparent transition-all duration-300 will-change-transform"
             >
               <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />1 min
             </Button>
@@ -86,11 +87,21 @@ export function Controls({
 
           {/* Jump Controls */}
           <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            <Button onClick={onJumpTo45} variant="secondary" size="lg" className="h-10 sm:h-12 text-xs sm:text-sm">
+            <Button 
+              onClick={onJumpTo45} 
+              variant="secondary" 
+              size="lg" 
+              className="h-10 sm:h-12 text-xs sm:text-sm transition-all duration-300 will-change-transform"
+            >
               Jump to 45:00
             </Button>
 
-            <Button onClick={onJumpTo90} variant="secondary" size="lg" className="h-10 sm:h-12 text-xs sm:text-sm">
+            <Button 
+              onClick={onJumpTo90} 
+              variant="secondary" 
+              size="lg" 
+              className="h-10 sm:h-12 text-xs sm:text-sm transition-all duration-300 will-change-transform"
+            >
               Jump to 90:00
             </Button>
           </div>
@@ -98,4 +109,8 @@ export function Controls({
       )}
     </div>
   )
-}
+})
+
+Controls.displayName = 'Controls'
+
+export { Controls }

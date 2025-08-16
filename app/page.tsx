@@ -5,7 +5,7 @@ import { ProgressBar } from "@/components/progress-bar"
 import { Controls } from "@/components/controls"
 import { useStopwatch } from "@/hooks/use-stopwatch"
 import { useRemoteTimer } from "@/hooks/use-remote-timer"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Maximize, Minimize, Monitor, Wifi, WifiOff } from "lucide-react"
 
@@ -18,8 +18,11 @@ export default function SoccerStopwatch() {
   const localTimer = useStopwatch()
   const remoteTimer = useRemoteTimer()
   
-  // 現在アクティブなタイマーを選択
-  const timer = isRemoteMode ? remoteTimer : localTimer
+  // 現在アクティブなタイマーを選択（メモ化）
+  const timer = useMemo(() => 
+    isRemoteMode ? remoteTimer : localTimer,
+    [isRemoteMode, remoteTimer, localTimer]
+  )
 
   // URL パラメータから初期状態を設定
   useEffect(() => {
@@ -33,7 +36,7 @@ export default function SoccerStopwatch() {
   }, [])
 
   // フルスクリーン切り替え
-  const toggleFullscreen = async () => {
+  const toggleFullscreen = useCallback(async () => {
     try {
       if (!document.fullscreenElement) {
         await document.documentElement.requestFullscreen()
@@ -45,38 +48,43 @@ export default function SoccerStopwatch() {
     } catch (error) {
       console.error("Fullscreen error:", error)
     }
-  }
+  }, [])
 
   // ストリーミングモード切り替え
-  const toggleStreamingMode = () => {
-    setIsStreamingMode(!isStreamingMode)
-    const url = new URL(window.location.href)
-    if (!isStreamingMode) {
-      url.searchParams.set("overlay", "true")
-      if (isRemoteMode) {
-        url.searchParams.set("remote", "true")
+  const toggleStreamingMode = useCallback(() => {
+    setIsStreamingMode(prev => {
+      const newMode = !prev
+      const url = new URL(window.location.href)
+      if (newMode) {
+        url.searchParams.set("overlay", "true")
+        if (isRemoteMode) {
+          url.searchParams.set("remote", "true")
+        }
+      } else {
+        url.searchParams.delete("overlay")
       }
-    } else {
-      url.searchParams.delete("overlay")
-    }
-    window.history.replaceState({}, "", url.toString())
-  }
+      window.history.replaceState({}, "", url.toString())
+      return newMode
+    })
+  }, [isRemoteMode])
 
   // リモートモード切り替え
-  const toggleRemoteMode = () => {
-    const newRemoteMode = !isRemoteMode
-    setIsRemoteMode(newRemoteMode)
-    
-    const url = new URL(window.location.href)
-    if (newRemoteMode) {
-      url.searchParams.set("remote", "true")
-    } else {
-      url.searchParams.delete("remote")
-    }
-    window.history.replaceState({}, "", url.toString())
-    
-    console.log("Remote mode toggled:", newRemoteMode) // デバッグログ
-  }
+  const toggleRemoteMode = useCallback(() => {
+    setIsRemoteMode(prev => {
+      const newRemoteMode = !prev
+      
+      const url = new URL(window.location.href)
+      if (newRemoteMode) {
+        url.searchParams.set("remote", "true")
+      } else {
+        url.searchParams.delete("remote")
+      }
+      window.history.replaceState({}, "", url.toString())
+      
+      console.log("Remote mode toggled:", newRemoteMode)
+      return newRemoteMode
+    })
+  }, [])
 
   // フルスクリーン状態の監視
   useEffect(() => {
@@ -129,7 +137,15 @@ export default function SoccerStopwatch() {
 
     window.addEventListener("keydown", handleKeyPress)
     return () => window.removeEventListener("keydown", handleKeyPress)
-  }, [timer.isRunning, timer.start, timer.pause, timer.reset])
+  }, [timer.isRunning, timer.start, timer.pause, timer.reset, toggleFullscreen, toggleStreamingMode, toggleRemoteMode])
+
+  // メモ化されたデバッグ情報
+  const debugInfo = useMemo(() => ({
+    mode: isRemoteMode ? 'Remote' : 'Local',
+    running: timer.isRunning ? 'Yes' : 'No',
+    elapsed: Math.floor(timer.elapsed / 1000),
+    connected: isRemoteMode ? (remoteTimer.isConnected ? 'Yes' : 'No') : 'N/A'
+  }), [isRemoteMode, timer.isRunning, timer.elapsed, remoteTimer.isConnected])
 
   // ストリーミングモード表示
   if (isStreamingMode) {
@@ -137,11 +153,11 @@ export default function SoccerStopwatch() {
       <div className="min-h-screen bg-white flex items-center justify-center p-4">
         <TimerDisplay elapsed={timer.elapsed} isFullscreen={true} isStreamingMode={true} />
         {/* デバッグ情報 */}
-        <div className="fixed bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded text-xs">
-          Mode: {isRemoteMode ? 'Remote' : 'Local'} | 
-          Running: {timer.isRunning ? 'Yes' : 'No'} | 
-          Elapsed: {Math.floor(timer.elapsed / 1000)}s
-          {isRemoteMode && ` | Connected: ${remoteTimer.isConnected ? 'Yes' : 'No'}`}
+        <div className="fixed bottom-4 right-4 bg-black bg-opacity-50 text-white p-2 rounded text-xs font-mono">
+          Mode: {debugInfo.mode} | 
+          Running: {debugInfo.running} | 
+          Elapsed: {debugInfo.elapsed}s
+          {isRemoteMode && ` | Connected: ${debugInfo.connected}`}
         </div>
       </div>
     )
@@ -157,7 +173,7 @@ export default function SoccerStopwatch() {
             onClick={toggleRemoteMode}
             variant={isRemoteMode ? "default" : "ghost"}
             size="sm"
-            className={`text-gray-600 hover:text-gray-900 ${isRemoteMode ? "bg-blue-100 text-blue-700" : ""}`}
+            className={`text-gray-600 hover:text-gray-900 transition-colors ${isRemoteMode ? "bg-blue-100 text-blue-700" : ""}`}
           >
             {isRemoteMode ? (
               <>{remoteTimer.isConnected ? <Wifi className="w-4 h-4" /> : <WifiOff className="w-4 h-4" />}</>
@@ -177,7 +193,7 @@ export default function SoccerStopwatch() {
         {isRemoteMode && (
           <div className="text-center">
             <div
-              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
+              className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm transition-colors ${
                 remoteTimer.isConnected ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
               }`}
             >
@@ -222,11 +238,11 @@ export default function SoccerStopwatch() {
         <div className="text-center text-xs sm:text-sm text-gray-600">
           <p>Keyboard: Space = Start/Pause, R = Reset, F = Fullscreen, S = Streaming, W = Remote</p>
           {/* デバッグ情報 */}
-          <div className="mt-2 text-xs text-gray-400">
-            Mode: {isRemoteMode ? 'Remote' : 'Local'} | 
-            Running: {timer.isRunning ? 'Yes' : 'No'} | 
-            Elapsed: {Math.floor(timer.elapsed / 1000)}s
-            {isRemoteMode && ` | Connected: ${remoteTimer.isConnected ? 'Yes' : 'No'}`}
+          <div className="mt-2 text-xs text-gray-400 font-mono">
+            Mode: {debugInfo.mode} | 
+            Running: {debugInfo.running} | 
+            Elapsed: {debugInfo.elapsed}s
+            {isRemoteMode && ` | Connected: ${debugInfo.connected}`}
           </div>
         </div>
       </div>

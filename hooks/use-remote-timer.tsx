@@ -1,8 +1,8 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { database } from "@/lib/firebase"
-import { ref, onValue, set, serverTimestamp } from "firebase/database"
+import { ref, onValue, set } from "firebase/database"
 
 interface FirebaseTimerState {
   baseElapsed: number // 基準の経過時間
@@ -24,14 +24,21 @@ export function useRemoteTimer() {
   const [currentElapsed, setCurrentElapsed] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const animationFrameRef = useRef<number | null>(null)
   const isUpdatingRef = useRef(false) // Firebase更新中フラグ
+  const lastSyncTimeRef = useRef(0) // 最後の同期時間
 
-  // リアルタイム表示更新関数
+  // 高精度リアルタイム表示更新関数
   const updateCurrentElapsed = useCallback(() => {
     if (remoteState.isRunning && remoteState.startTimestamp > 0) {
-      const now = Date.now()
+      const now = performance.now()
       const elapsed = remoteState.baseElapsed + (now - remoteState.startTimestamp)
       setCurrentElapsed(Math.max(0, elapsed))
+      
+      // 次のフレームで再度実行
+      if (remoteState.isRunning) {
+        animationFrameRef.current = requestAnimationFrame(updateCurrentElapsed)
+      }
     } else {
       setCurrentElapsed(Math.max(0, remoteState.baseElapsed))
     }
@@ -39,6 +46,12 @@ export function useRemoteTimer() {
 
   // リアルタイム更新の管理
   useEffect(() => {
+    // アニメーションフレームをキャンセル
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+
     // インターバルをクリア
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
@@ -46,15 +59,27 @@ export function useRemoteTimer() {
     }
 
     if (remoteState.isRunning) {
-      // タイマーが動いている時は高頻度で更新
-      intervalRef.current = setInterval(updateCurrentElapsed, 50) // 50ms間隔
-      updateCurrentElapsed() // 即座に一度実行
+      // 高精度アニメーションフレーム更新を開始
+      animationFrameRef.current = requestAnimationFrame(updateCurrentElapsed)
+      
+      // フォールバック用の低頻度インターバル
+      intervalRef.current = setInterval(() => {
+        if (remoteState.startTimestamp > 0) {
+          const now = performance.now()
+          const elapsed = remoteState.baseElapsed + (now - remoteState.startTimestamp)
+          setCurrentElapsed(Math.max(0, elapsed))
+        }
+      }, 16) // 約60fps
     } else {
       // 停止中は一度だけ更新
       updateCurrentElapsed()
     }
 
     return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
@@ -76,20 +101,33 @@ export function useRemoteTimer() {
 
         try {
           const data = snapshot.val()
+          const now = performance.now()
           
           if (data) {
+            // タイムスタンプを現在の高精度時間に変換
+            const adjustedStartTimestamp = data.isRunning && data.startTimestamp 
+              ? now - (Date.now() - data.startTimestamp)
+              : 0
+
             const newState: FirebaseTimerState = {
               baseElapsed: Math.max(0, data.baseElapsed || 0),
               isRunning: Boolean(data.isRunning),
-              startTimestamp: data.startTimestamp || Date.now(),
+              startTimestamp: adjustedStartTimestamp,
               lastUpdate: data.lastUpdate || Date.now(),
               sessionId: data.sessionId || "",
             }
             
-            setRemoteState(newState)
-            setIsConnected(true)
-            
-            console.log("Firebase state updated:", newState) // デバッグログ
+            // 重複更新を防ぐ
+            if (lastSyncTimeRef.current !== data.lastUpdate) {
+              setRemoteState(newState)
+              lastSyncTimeRef.current = data.lastUpdate
+              setIsConnected(true)
+              
+              console.log("Firebase state synchronized:", {
+                ...newState,
+                timeDiff: now - adjustedStartTimestamp
+              })
+            }
           } else {
             // 初期データがない場合は作成
             const initialState: FirebaseTimerState = {
@@ -101,13 +139,18 @@ export function useRemoteTimer() {
             }
             
             isUpdatingRef.current = true
-            set(timerRef, initialState).then(() => {
+            set(timerRef, {
+              ...initialState,
+              startTimestamp: initialState.startTimestamp || null
+            }).then(() => {
               isUpdatingRef.current = false
               setRemoteState(initialState)
               setIsConnected(true)
+              console.log("Firebase initialized:", initialState)
             }).catch((error) => {
               isUpdatingRef.current = false
               console.error("Failed to initialize timer:", error)
+              setIsConnected(false)
             })
           }
         } catch (error) {
@@ -123,6 +166,10 @@ export function useRemoteTimer() {
 
     return () => {
       unsubscribe()
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current)
+        animationFrameRef.current = null
+      }
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
@@ -130,11 +177,11 @@ export function useRemoteTimer() {
     }
   }, [])
 
-  // コマンド送信関数
+  // コマンド送信関数（デバウンス機能付き）
   const sendCommand = useCallback(
     async (action: string) => {
       if (isUpdatingRef.current) {
-        console.log("Update in progress, skipping...")
+        console.log("Update in progress, skipping command:", action)
         return
       }
 
@@ -148,7 +195,6 @@ export function useRemoteTimer() {
         switch (action) {
           case "start":
             if (!remoteState.isRunning) {
-              // 開始：現在の累積時間を基準として、新しい開始時刻を設定
               newState = {
                 baseElapsed: remoteState.baseElapsed,
                 isRunning: true,
@@ -156,7 +202,7 @@ export function useRemoteTimer() {
                 lastUpdate: now,
                 sessionId: remoteState.sessionId,
               }
-              console.log("Starting timer with state:", newState)
+              console.log("Sending start command:", newState)
             } else {
               isUpdatingRef.current = false
               return
@@ -165,8 +211,7 @@ export function useRemoteTimer() {
 
           case "pause":
             if (remoteState.isRunning && remoteState.startTimestamp > 0) {
-              // 一時停止：現在の経過時間を計算して基準時間として保存
-              const currentElapsedTime = remoteState.baseElapsed + (now - remoteState.startTimestamp)
+              const currentElapsedTime = remoteState.baseElapsed + (performance.now() - remoteState.startTimestamp)
               
               newState = {
                 baseElapsed: Math.max(0, currentElapsedTime),
@@ -175,7 +220,7 @@ export function useRemoteTimer() {
                 lastUpdate: now,
                 sessionId: remoteState.sessionId,
               }
-              console.log("Pausing timer with state:", newState)
+              console.log("Sending pause command:", newState)
             } else {
               isUpdatingRef.current = false
               return
@@ -190,11 +235,12 @@ export function useRemoteTimer() {
               lastUpdate: now,
               sessionId: remoteState.sessionId,
             }
-            console.log("Resetting timer with state:", newState)
+            console.log("Sending reset command:", newState)
             break
 
           default:
             isUpdatingRef.current = false
+            console.warn("Unknown command:", action)
             return
         }
 
@@ -204,37 +250,41 @@ export function useRemoteTimer() {
         // 短い遅延後にフラグをクリア
         setTimeout(() => {
           isUpdatingRef.current = false
-        }, 100)
+        }, 50)
 
       } catch (error) {
         console.error("Failed to send command:", error)
         isUpdatingRef.current = false
+        setIsConnected(false)
       }
     },
     [remoteState]
   )
 
   const start = useCallback(() => {
-    console.log("Start command triggered")
+    console.log("Remote start command triggered")
     sendCommand("start")
   }, [sendCommand])
 
   const pause = useCallback(() => {
-    console.log("Pause command triggered")
+    console.log("Remote pause command triggered")
     sendCommand("pause")
   }, [sendCommand])
 
   const reset = useCallback(() => {
-    console.log("Reset command triggered")
+    console.log("Remote reset command triggered")
     sendCommand("reset")
   }, [sendCommand])
 
-  return {
+  // メモ化されたreturnオブジェクト
+  const timerInterface = useMemo(() => ({
     elapsed: Math.max(0, currentElapsed),
     isRunning: remoteState.isRunning,
     isConnected,
     start,
     pause,
     reset,
-  }
+  }), [currentElapsed, remoteState.isRunning, isConnected, start, pause, reset])
+
+  return timerInterface
 }
