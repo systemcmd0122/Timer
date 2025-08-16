@@ -29,12 +29,16 @@ export default function SoccerStopwatch() {
   }, [])
 
   const toggleFullscreen = async () => {
-    if (!document.fullscreenElement) {
-      await document.documentElement.requestFullscreen()
-      setIsFullscreen(true)
-    } else {
-      await document.exitFullscreen()
-      setIsFullscreen(false)
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen()
+        setIsFullscreen(true)
+      } else {
+        await document.exitFullscreen()
+        setIsFullscreen(false)
+      }
+    } catch (error) {
+      console.error("Fullscreen error:", error)
     }
   }
 
@@ -52,15 +56,6 @@ export default function SoccerStopwatch() {
     window.history.replaceState({}, "", url.toString())
   }
 
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
-    }
-
-    document.addEventListener("fullscreenchange", handleFullscreenChange)
-    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
-  }, [])
-
   const toggleRemoteMode = () => {
     setIsRemoteMode(!isRemoteMode)
     const url = new URL(window.location.href)
@@ -73,7 +68,21 @@ export default function SoccerStopwatch() {
   }
 
   useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement)
+    }
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange)
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange)
+  }, [])
+
+  useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
+      // フォーカスされた入力要素がある場合はキーボードショートカットを無効にする
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        return
+      }
+
       if (e.code === "Space") {
         e.preventDefault()
         if (timer.isRunning) {
@@ -98,7 +107,7 @@ export default function SoccerStopwatch() {
 
     window.addEventListener("keydown", handleKeyPress)
     return () => window.removeEventListener("keydown", handleKeyPress)
-  }, [timer.isRunning, timer.start, timer.pause, timer.reset, isStreamingMode])
+  }, [timer.isRunning, timer.start, timer.pause, timer.reset])
 
   if (isStreamingMode) {
     return (

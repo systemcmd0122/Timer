@@ -1,5 +1,5 @@
 export function formatElapsed(ms: number, mode: "soccer" | "standard" = "standard"): string {
-  const safeMs = Math.max(0, ms)
+  const safeMs = Math.max(0, Math.floor(ms))
   const totalSeconds = Math.floor(safeMs / 1000)
   const minutes = Math.floor(totalSeconds / 60)
   const seconds = totalSeconds % 60

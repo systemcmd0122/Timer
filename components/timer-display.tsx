@@ -15,6 +15,7 @@ export function TimerDisplay({ elapsed, isFullscreen = false, isStreamingMode = 
         className="font-mono font-bold text-black text-6xl sm:text-7xl lg:text-8xl tracking-wider"
         aria-live="polite"
         aria-label={`Elapsed time: ${formattedTime}`}
+        suppressHydrationWarning={true}
       >
         {formattedTime}
       </div>
@@ -26,6 +27,7 @@ export function TimerDisplay({ elapsed, isFullscreen = false, isStreamingMode = 
       className="font-mono font-bold rounded border-2 transition-all duration-300 text-4xl sm:text-6xl text-black bg-white px-3 py-2 sm:px-4 sm:py-2 border-gray-300"
       aria-live="polite"
       aria-label={`Elapsed time: ${formattedTime}`}
+      suppressHydrationWarning={true}
     >
       {formattedTime}
     </div>

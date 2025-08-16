@@ -7,98 +7,119 @@ export function useStopwatch() {
   const [isRunning, setIsRunning] = useState(false)
   const startTimeRef = useRef<number | null>(null)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const accumulatedTimeRef = useRef(0)
+  const baseTimeRef = useRef(0) // 基準時間（一時停止時に累積される時間）
 
+  // リアルタイム更新関数
   const updateElapsed = useCallback(() => {
-    if (startTimeRef.current !== null) {
+    if (isRunning && startTimeRef.current !== null) {
       const now = Date.now()
-      const currentElapsed = accumulatedTimeRef.current + (now - startTimeRef.current)
-      setElapsed(currentElapsed)
+      const currentElapsed = baseTimeRef.current + (now - startTimeRef.current)
+      setElapsed(Math.max(0, currentElapsed))
     }
-  }, [])
+  }, [isRunning])
 
+  // isRunning の状態に応じてインターバルを設定/クリア
   useEffect(() => {
     if (isRunning) {
-      intervalRef.current = setInterval(updateElapsed, 10) // 10ms間隔で更新
+      // タイマー開始時にインターバルを設定
+      intervalRef.current = setInterval(updateElapsed, 50) // 50ms間隔で更新（スムーズな表示）
+      
+      // 即座に一度更新
+      updateElapsed()
     } else {
+      // タイマー停止時にインターバルをクリア
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
     }
 
+    // クリーンアップ関数
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
     }
   }, [isRunning, updateElapsed])
 
   const start = useCallback(() => {
     if (!isRunning) {
-      startTimeRef.current = Date.now()
+      const now = Date.now()
+      startTimeRef.current = now
       setIsRunning(true)
     }
   }, [isRunning])
 
   const pause = useCallback(() => {
-    if (isRunning && startTimeRef.current !== null) {
-      const now = Date.now()
-      accumulatedTimeRef.current += now - startTimeRef.current
-      setElapsed(accumulatedTimeRef.current)
+    if (isRunning) {
+      if (startTimeRef.current !== null) {
+        const now = Date.now()
+        // 現在の経過時間を基準時間に追加
+        baseTimeRef.current += now - startTimeRef.current
+        setElapsed(Math.max(0, baseTimeRef.current))
+      }
       startTimeRef.current = null
       setIsRunning(false)
     }
   }, [isRunning])
 
   const reset = useCallback(() => {
+    // インターバルをクリア
     if (intervalRef.current) {
       clearInterval(intervalRef.current)
       intervalRef.current = null
     }
+    
+    // 全ての値をリセット
     setElapsed(0)
     setIsRunning(false)
     startTimeRef.current = null
-    accumulatedTimeRef.current = 0
+    baseTimeRef.current = 0
   }, [])
 
   const addMinute = useCallback(() => {
     const minuteInMs = 60 * 1000
-    accumulatedTimeRef.current += minuteInMs
     
     if (isRunning && startTimeRef.current !== null) {
-      // タイマーが動いている場合は、開始時刻を調整して継続的な更新を維持
+      // タイマーが動いている場合：開始時刻を1分前にずらす
       startTimeRef.current -= minuteInMs
     } else {
-      // タイマーが停止している場合は、直接elapsed を更新
-      setElapsed(accumulatedTimeRef.current)
+      // タイマーが停止している場合：基準時間に1分追加
+      baseTimeRef.current += minuteInMs
+      setElapsed(Math.max(0, baseTimeRef.current))
     }
   }, [isRunning])
 
   const subtractMinute = useCallback(() => {
     const minuteInMs = 60 * 1000
-    const newAccumulated = Math.max(0, accumulatedTimeRef.current - minuteInMs)
-    const adjustment = accumulatedTimeRef.current - newAccumulated
-    accumulatedTimeRef.current = newAccumulated
     
     if (isRunning && startTimeRef.current !== null) {
-      // タイマーが動いている場合は、開始時刻を調整
-      startTimeRef.current += adjustment
+      // タイマーが動いている場合：開始時刻を1分後にずらす（ただし現在時刻を超えない）
+      const now = Date.now()
+      const currentElapsed = baseTimeRef.current + (now - startTimeRef.current)
+      const newElapsed = Math.max(0, currentElapsed - minuteInMs)
+      
+      baseTimeRef.current = newElapsed
+      startTimeRef.current = now
     } else {
-      // タイマーが停止している場合は、直接elapsed を更新
-      setElapsed(accumulatedTimeRef.current)
+      // タイマーが停止している場合：基準時間から1分減算
+      baseTimeRef.current = Math.max(0, baseTimeRef.current - minuteInMs)
+      setElapsed(baseTimeRef.current)
     }
   }, [isRunning])
 
   const jumpTo = useCallback((targetMs: number) => {
     const clampedTarget = Math.max(0, targetMs)
-    accumulatedTimeRef.current = clampedTarget
     
     if (isRunning && startTimeRef.current !== null) {
-      // タイマーが動いている場合は、開始時刻を現在時刻 - target に設定
-      startTimeRef.current = Date.now() - clampedTarget
+      // タイマーが動いている場合：新しい基準時間を設定し、開始時刻を現在時刻に設定
+      const now = Date.now()
+      baseTimeRef.current = clampedTarget
+      startTimeRef.current = now
     } else {
-      // タイマーが停止している場合は、直接elapsed を更新
+      // タイマーが停止している場合：基準時間を直接設定
+      baseTimeRef.current = clampedTarget
       setElapsed(clampedTarget)
     }
   }, [isRunning])

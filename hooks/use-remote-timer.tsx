@@ -9,6 +9,7 @@ interface TimerState {
   isRunning: boolean
   lastUpdate: number
   sessionId: string
+  baseTime: number // 基準時間を追加
 }
 
 export function useRemoteTimer() {
@@ -17,41 +18,47 @@ export function useRemoteTimer() {
     isRunning: false,
     lastUpdate: Date.now(),
     sessionId: "",
+    baseTime: 0,
   })
+  const [displayElapsed, setDisplayElapsed] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
-  const [currentElapsed, setCurrentElapsed] = useState(0)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
 
-  // リアルタイム更新用の関数
-  const updateCurrentElapsed = useCallback(() => {
+  // リアルタイム表示更新関数
+  const updateDisplayElapsed = useCallback(() => {
     if (timerState.isRunning && timerState.lastUpdate) {
       const now = Date.now()
-      const newElapsed = Math.max(0, timerState.elapsed + (now - timerState.lastUpdate))
-      setCurrentElapsed(newElapsed)
+      const currentElapsed = timerState.baseTime + (now - timerState.lastUpdate)
+      setDisplayElapsed(Math.max(0, currentElapsed))
     } else {
-      setCurrentElapsed(timerState.elapsed)
+      setDisplayElapsed(Math.max(0, timerState.baseTime))
     }
-  }, [timerState])
+  }, [timerState.isRunning, timerState.lastUpdate, timerState.baseTime])
 
-  // タイマーが動いている時のリアルタイム更新
+  // isRunning状態に基づいてリアルタイム更新を管理
   useEffect(() => {
     if (timerState.isRunning) {
-      intervalRef.current = setInterval(updateCurrentElapsed, 10) // 10ms間隔で更新
+      // タイマーが動いている場合：リアルタイム更新を開始
+      intervalRef.current = setInterval(updateDisplayElapsed, 50) // 50ms間隔
+      updateDisplayElapsed() // 即座に一度更新
     } else {
+      // タイマーが停止している場合：リアルタイム更新を停止
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
         intervalRef.current = null
       }
-      setCurrentElapsed(timerState.elapsed)
+      setDisplayElapsed(Math.max(0, timerState.baseTime))
     }
 
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)
+        intervalRef.current = null
       }
     }
-  }, [timerState.isRunning, updateCurrentElapsed])
+  }, [timerState.isRunning, updateDisplayElapsed, timerState.baseTime])
 
+  // Firebase接続とデータ同期
   useEffect(() => {
     const timerRef = ref(database, "timer")
 
@@ -61,22 +68,25 @@ export function useRemoteTimer() {
         try {
           const state = snapshot.val()
           if (state) {
-            const newTimerState = {
+            // Firebase からデータを取得して状態を更新
+            const newTimerState: TimerState = {
               elapsed: Math.max(0, state.elapsed || 0),
-              isRunning: state.isRunning || false,
+              isRunning: Boolean(state.isRunning),
               lastUpdate: state.lastUpdate || Date.now(),
               sessionId: state.sessionId || "",
+              baseTime: Math.max(0, state.baseTime || state.elapsed || 0), // 基準時間
             }
             
             setTimerState(newTimerState)
             setIsConnected(true)
           } else {
-            // Initialize timer state if it doesn't exist
-            const initialState = {
+            // 初期状態を作成
+            const initialState: TimerState = {
               elapsed: 0,
               isRunning: false,
               lastUpdate: Date.now(),
               sessionId: Math.random().toString(36).substr(2, 9),
+              baseTime: 0,
             }
             set(timerRef, initialState)
             setTimerState(initialState)
@@ -97,7 +107,7 @@ export function useRemoteTimer() {
   }, [])
 
   const sendCommand = useCallback(
-    async (action: string, elapsed?: number) => {
+    async (action: string) => {
       try {
         const timerRef = ref(database, "timer")
         const now = Date.now()
@@ -106,42 +116,50 @@ export function useRemoteTimer() {
 
         switch (action) {
           case "start":
-            // 現在の経過時間を保存して開始
-            let startElapsed = timerState.elapsed
-            if (timerState.isRunning && timerState.lastUpdate) {
-              startElapsed += now - timerState.lastUpdate
-            }
-            newState = {
-              elapsed: Math.max(0, startElapsed),
-              isRunning: true,
-              lastUpdate: now,
+            if (!timerState.isRunning) {
+              // 開始時：現在の基準時間を保持し、lastUpdateを現在時刻に設定
+              newState = {
+                isRunning: true,
+                lastUpdate: now,
+                baseTime: timerState.baseTime,
+                elapsed: timerState.baseTime,
+              }
             }
             break
+            
           case "pause":
-            // 現在の経過時間を計算して一時停止
-            let pauseElapsed = timerState.elapsed
-            if (timerState.isRunning && timerState.lastUpdate) {
-              pauseElapsed += now - timerState.lastUpdate
-            }
-            newState = {
-              elapsed: Math.max(0, pauseElapsed),
-              isRunning: false,
-              lastUpdate: now,
+            if (timerState.isRunning) {
+              // 一時停止時：現在の経過時間を計算して基準時間として保存
+              let currentElapsed = timerState.baseTime
+              if (timerState.lastUpdate) {
+                currentElapsed += now - timerState.lastUpdate
+              }
+              
+              newState = {
+                elapsed: Math.max(0, currentElapsed),
+                isRunning: false,
+                lastUpdate: now,
+                baseTime: Math.max(0, currentElapsed),
+              }
             }
             break
+            
           case "reset":
             newState = {
               elapsed: 0,
               isRunning: false,
               lastUpdate: now,
+              baseTime: 0,
             }
             break
         }
 
-        await set(timerRef, {
-          ...timerState,
-          ...newState,
-        })
+        if (Object.keys(newState).length > 0) {
+          await set(timerRef, {
+            ...timerState,
+            ...newState,
+          })
+        }
       } catch (error) {
         console.error("Failed to send command:", error)
       }
@@ -154,7 +172,7 @@ export function useRemoteTimer() {
   const reset = useCallback(() => sendCommand("reset"), [sendCommand])
 
   return {
-    elapsed: Math.max(0, currentElapsed),
+    elapsed: Math.max(0, displayElapsed),
     isRunning: timerState.isRunning,
     isConnected,
     start,
