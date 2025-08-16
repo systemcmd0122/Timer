@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import { database } from "@/lib/firebase"
 import { ref, onValue, set } from "firebase/database"
 
@@ -19,6 +19,38 @@ export function useRemoteTimer() {
     sessionId: "",
   })
   const [isConnected, setIsConnected] = useState(false)
+  const [currentElapsed, setCurrentElapsed] = useState(0)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+
+  // リアルタイム更新用の関数
+  const updateCurrentElapsed = useCallback(() => {
+    if (timerState.isRunning && timerState.lastUpdate) {
+      const now = Date.now()
+      const newElapsed = Math.max(0, timerState.elapsed + (now - timerState.lastUpdate))
+      setCurrentElapsed(newElapsed)
+    } else {
+      setCurrentElapsed(timerState.elapsed)
+    }
+  }, [timerState])
+
+  // タイマーが動いている時のリアルタイム更新
+  useEffect(() => {
+    if (timerState.isRunning) {
+      intervalRef.current = setInterval(updateCurrentElapsed, 10) // 10ms間隔で更新
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+      setCurrentElapsed(timerState.elapsed)
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+    }
+  }, [timerState.isRunning, updateCurrentElapsed])
 
   useEffect(() => {
     const timerRef = ref(database, "timer")
@@ -29,20 +61,14 @@ export function useRemoteTimer() {
         try {
           const state = snapshot.val()
           if (state) {
-            // Calculate current elapsed time if timer is running
-            let currentElapsed = state.elapsed || 0
-            if (state.isRunning && state.lastUpdate) {
-              currentElapsed += Date.now() - state.lastUpdate
-            }
-
-            currentElapsed = Math.max(0, currentElapsed)
-
-            setTimerState({
-              elapsed: currentElapsed,
+            const newTimerState = {
+              elapsed: Math.max(0, state.elapsed || 0),
               isRunning: state.isRunning || false,
               lastUpdate: state.lastUpdate || Date.now(),
               sessionId: state.sessionId || "",
-            })
+            }
+            
+            setTimerState(newTimerState)
             setIsConnected(true)
           } else {
             // Initialize timer state if it doesn't exist
@@ -80,19 +106,25 @@ export function useRemoteTimer() {
 
         switch (action) {
           case "start":
+            // 現在の経過時間を保存して開始
+            let startElapsed = timerState.elapsed
+            if (timerState.isRunning && timerState.lastUpdate) {
+              startElapsed += now - timerState.lastUpdate
+            }
             newState = {
+              elapsed: Math.max(0, startElapsed),
               isRunning: true,
               lastUpdate: now,
             }
             break
           case "pause":
-            // Calculate final elapsed time when pausing
-            let finalElapsed = timerState.elapsed
-            if (timerState.isRunning) {
-              finalElapsed += now - timerState.lastUpdate
+            // 現在の経過時間を計算して一時停止
+            let pauseElapsed = timerState.elapsed
+            if (timerState.isRunning && timerState.lastUpdate) {
+              pauseElapsed += now - timerState.lastUpdate
             }
             newState = {
-              elapsed: Math.max(0, finalElapsed),
+              elapsed: Math.max(0, pauseElapsed),
               isRunning: false,
               lastUpdate: now,
             }
@@ -122,7 +154,7 @@ export function useRemoteTimer() {
   const reset = useCallback(() => sendCommand("reset"), [sendCommand])
 
   return {
-    elapsed: Math.max(0, timerState.elapsed),
+    elapsed: Math.max(0, currentElapsed),
     isRunning: timerState.isRunning,
     isConnected,
     start,

@@ -1,73 +1,107 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
+import { useState, useRef, useCallback, useEffect } from "react"
 
 export function useStopwatch() {
   const [elapsed, setElapsed] = useState(0)
   const [isRunning, setIsRunning] = useState(false)
   const startTimeRef = useRef<number | null>(null)
-  const animationFrameRef = useRef<number | null>(null)
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const accumulatedTimeRef = useRef(0)
 
   const updateElapsed = useCallback(() => {
     if (startTimeRef.current !== null) {
-      const now = performance.now()
-      const newElapsed = now - startTimeRef.current
-      setElapsed(newElapsed)
-      animationFrameRef.current = requestAnimationFrame(updateElapsed)
+      const now = Date.now()
+      const currentElapsed = accumulatedTimeRef.current + (now - startTimeRef.current)
+      setElapsed(currentElapsed)
     }
   }, [])
 
+  useEffect(() => {
+    if (isRunning) {
+      intervalRef.current = setInterval(updateElapsed, 10) // 10ms間隔で更新
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+        intervalRef.current = null
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current)
+      }
+    }
+  }, [isRunning, updateElapsed])
+
   const start = useCallback(() => {
     if (!isRunning) {
-      startTimeRef.current = performance.now() - elapsed
+      startTimeRef.current = Date.now()
       setIsRunning(true)
-      animationFrameRef.current = requestAnimationFrame(updateElapsed)
     }
-  }, [isRunning, elapsed, updateElapsed])
+  }, [isRunning])
 
   const pause = useCallback(() => {
-    if (isRunning && animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = null
+    if (isRunning && startTimeRef.current !== null) {
+      const now = Date.now()
+      accumulatedTimeRef.current += now - startTimeRef.current
+      setElapsed(accumulatedTimeRef.current)
+      startTimeRef.current = null
       setIsRunning(false)
     }
   }, [isRunning])
 
   const reset = useCallback(() => {
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current)
-      animationFrameRef.current = null
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current)
+      intervalRef.current = null
     }
     setElapsed(0)
     setIsRunning(false)
     startTimeRef.current = null
+    accumulatedTimeRef.current = 0
   }, [])
 
   const addMinute = useCallback(() => {
-    const newElapsed = elapsed + 60 * 1000
-    setElapsed(newElapsed)
+    const minuteInMs = 60 * 1000
+    accumulatedTimeRef.current += minuteInMs
+    
     if (isRunning && startTimeRef.current !== null) {
-      startTimeRef.current = performance.now() - newElapsed
+      // タイマーが動いている場合は、開始時刻を調整して継続的な更新を維持
+      startTimeRef.current -= minuteInMs
+    } else {
+      // タイマーが停止している場合は、直接elapsed を更新
+      setElapsed(accumulatedTimeRef.current)
     }
-  }, [elapsed, isRunning])
+  }, [isRunning])
 
   const subtractMinute = useCallback(() => {
-    const newElapsed = Math.max(0, elapsed - 60 * 1000)
-    setElapsed(newElapsed)
+    const minuteInMs = 60 * 1000
+    const newAccumulated = Math.max(0, accumulatedTimeRef.current - minuteInMs)
+    const adjustment = accumulatedTimeRef.current - newAccumulated
+    accumulatedTimeRef.current = newAccumulated
+    
     if (isRunning && startTimeRef.current !== null) {
-      startTimeRef.current = performance.now() - newElapsed
+      // タイマーが動いている場合は、開始時刻を調整
+      startTimeRef.current += adjustment
+    } else {
+      // タイマーが停止している場合は、直接elapsed を更新
+      setElapsed(accumulatedTimeRef.current)
     }
-  }, [elapsed, isRunning])
+  }, [isRunning])
 
-  const jumpTo = useCallback(
-    (targetMs: number) => {
-      setElapsed(targetMs)
-      if (isRunning && startTimeRef.current !== null) {
-        startTimeRef.current = performance.now() - targetMs
-      }
-    },
-    [isRunning],
-  )
+  const jumpTo = useCallback((targetMs: number) => {
+    const clampedTarget = Math.max(0, targetMs)
+    accumulatedTimeRef.current = clampedTarget
+    
+    if (isRunning && startTimeRef.current !== null) {
+      // タイマーが動いている場合は、開始時刻を現在時刻 - target に設定
+      startTimeRef.current = Date.now() - clampedTarget
+    } else {
+      // タイマーが停止している場合は、直接elapsed を更新
+      setElapsed(clampedTarget)
+    }
+  }, [isRunning])
 
   return {
     elapsed,
