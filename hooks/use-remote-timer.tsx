@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { database } from "@/lib/firebase"
+import { ref, onValue, set } from "firebase/database"
 
 interface TimerState {
   elapsed: number
@@ -18,60 +20,109 @@ export function useRemoteTimer() {
   })
   const [isConnected, setIsConnected] = useState(false)
 
-  // Sync with server every 500ms
   useEffect(() => {
-    const syncTimer = setInterval(async () => {
-      try {
-        const response = await fetch("/api/timer")
-        const state = await response.json()
+    const timerRef = ref(database, "timer")
 
-        // Calculate current elapsed time if timer is running
-        let currentElapsed = state.elapsed
-        if (state.isRunning) {
-          currentElapsed += Date.now() - state.lastUpdate
+    const unsubscribe = onValue(
+      timerRef,
+      (snapshot) => {
+        try {
+          const state = snapshot.val()
+          if (state) {
+            // Calculate current elapsed time if timer is running
+            let currentElapsed = state.elapsed || 0
+            if (state.isRunning && state.lastUpdate) {
+              currentElapsed += Date.now() - state.lastUpdate
+            }
+
+            currentElapsed = Math.max(0, currentElapsed)
+
+            setTimerState({
+              elapsed: currentElapsed,
+              isRunning: state.isRunning || false,
+              lastUpdate: state.lastUpdate || Date.now(),
+              sessionId: state.sessionId || "",
+            })
+            setIsConnected(true)
+          } else {
+            // Initialize timer state if it doesn't exist
+            const initialState = {
+              elapsed: 0,
+              isRunning: false,
+              lastUpdate: Date.now(),
+              sessionId: Math.random().toString(36).substr(2, 9),
+            }
+            set(timerRef, initialState)
+            setTimerState(initialState)
+            setIsConnected(true)
+          }
+        } catch (error) {
+          console.error("Firebase connection error:", error)
+          setIsConnected(false)
+        }
+      },
+      (error) => {
+        console.error("Firebase listener error:", error)
+        setIsConnected(false)
+      },
+    )
+
+    return () => unsubscribe()
+  }, [])
+
+  const sendCommand = useCallback(
+    async (action: string, elapsed?: number) => {
+      try {
+        const timerRef = ref(database, "timer")
+        const now = Date.now()
+
+        let newState: Partial<TimerState> = {}
+
+        switch (action) {
+          case "start":
+            newState = {
+              isRunning: true,
+              lastUpdate: now,
+            }
+            break
+          case "pause":
+            // Calculate final elapsed time when pausing
+            let finalElapsed = timerState.elapsed
+            if (timerState.isRunning) {
+              finalElapsed += now - timerState.lastUpdate
+            }
+            newState = {
+              elapsed: Math.max(0, finalElapsed),
+              isRunning: false,
+              lastUpdate: now,
+            }
+            break
+          case "reset":
+            newState = {
+              elapsed: 0,
+              isRunning: false,
+              lastUpdate: now,
+            }
+            break
         }
 
-        currentElapsed = Math.max(0, currentElapsed)
-
-        setTimerState({
-          ...state,
-          elapsed: currentElapsed,
+        await set(timerRef, {
+          ...timerState,
+          ...newState,
         })
-        setIsConnected(true)
       } catch (error) {
-        console.error("Failed to sync timer:", error)
-        setIsConnected(false)
+        console.error("Failed to send command:", error)
       }
-    }, 500)
-
-    return () => clearInterval(syncTimer)
-  }, [])
-
-  const sendCommand = useCallback(async (action: string, elapsed?: number) => {
-    try {
-      const response = await fetch("/api/timer", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ action, elapsed }),
-      })
-
-      if (response.ok) {
-        const state = await response.json()
-        setTimerState(state)
-      }
-    } catch (error) {
-      console.error("Failed to send command:", error)
-    }
-  }, [])
+    },
+    [timerState],
+  )
 
   const start = useCallback(() => sendCommand("start"), [sendCommand])
   const pause = useCallback(() => sendCommand("pause"), [sendCommand])
   const reset = useCallback(() => sendCommand("reset"), [sendCommand])
 
   return {
-    elapsed: Math.max(0, timerState.elapsed), // Additional safety check for negative values
+    elapsed: Math.max(0, timerState.elapsed),
     isRunning: timerState.isRunning,
     isConnected,
     start,
