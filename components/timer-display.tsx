@@ -1,52 +1,35 @@
-import React, { memo } from "react"
-import { formatElapsed } from "@/lib/format-elapsed"
+"use client"
+
+import type React from "react"
+
+import { useTimer } from "@/contexts/timer-context"
+import { cn } from "@/lib/utils"
 
 interface TimerDisplayProps {
-  elapsed: number
-  isFullscreen?: boolean
-  isStreamingMode?: boolean
+  className?: string
+  size?: "sm" | "md" | "lg" | "xl"
 }
 
-const TimerDisplay = memo<TimerDisplayProps>(({ 
-  elapsed, 
-  isFullscreen = false, 
-  isStreamingMode = false 
-}) => {
-  const formattedTime = formatElapsed(elapsed, "soccer")
+export const TimerDisplay: React.FC<TimerDisplayProps> = ({ className, size = "lg" }) => {
+  const { formattedTime } = useTimer()
 
-  if (isStreamingMode) {
-    return (
-      <div
-        className="font-mono font-bold text-black text-6xl sm:text-7xl lg:text-8xl tracking-wider will-change-contents"
-        style={{ 
-          textShadow: '2px 2px 4px rgba(0,0,0,0.1)',
-          transform: 'translateZ(0)' // GPU加速
-        }}
-        aria-live="polite"
-        aria-label={`Elapsed time: ${formattedTime}`}
-        suppressHydrationWarning={true}
-      >
-        {formattedTime}
-      </div>
-    )
+  const sizeClasses = {
+    sm: "text-2xl",
+    md: "text-4xl",
+    lg: "text-6xl",
+    xl: "text-9xl md:text-[12rem] lg:text-[16rem]",
   }
 
   return (
     <div
-      className="font-mono font-bold rounded border-2 transition-all duration-300 text-4xl sm:text-6xl text-black bg-white px-3 py-2 sm:px-4 sm:py-2 border-gray-300 will-change-contents"
-      style={{ 
-        textShadow: '1px 1px 2px rgba(0,0,0,0.1)',
-        transform: 'translateZ(0)' // GPU加速
-      }}
-      aria-live="polite"
-      aria-label={`Elapsed time: ${formattedTime}`}
-      suppressHydrationWarning={true}
+      className={cn(
+        "font-mono font-bold text-center select-none",
+        size === "xl" && "tracking-wider drop-shadow-2xl",
+        sizeClasses[size],
+        className,
+      )}
     >
       {formattedTime}
     </div>
   )
-})
-
-TimerDisplay.displayName = 'TimerDisplay'
-
-export { TimerDisplay }
+}
