@@ -15,7 +15,6 @@ interface TimerControl {
 export function useSoccerTimer() {
   const [currentTime, setCurrentTime] = useState(0)
   const [state, setState] = useState<TimerState>("stopped")
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [isController, setIsController] = useState(false)
 
@@ -26,39 +25,6 @@ export function useSoccerTimer() {
   
   const timerControlRef = ref(database, "soccer-timer-control")
   const controllerRef = ref(database, "soccer-timer-controller")
-
-  // フルスクリーン状態の監視
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(!!document.fullscreenElement)
-    }
-
-    document.addEventListener('fullscreenchange', handleFullscreenChange)
-    document.addEventListener('webkitfullscreenchange', handleFullscreenChange)
-    document.addEventListener('mozfullscreenchange', handleFullscreenChange)
-    document.addEventListener('MSFullscreenChange', handleFullscreenChange)
-
-    return () => {
-      document.removeEventListener('fullscreenchange', handleFullscreenChange)
-      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange)
-      document.removeEventListener('mozfullscreenchange', handleFullscreenChange)
-      document.removeEventListener('MSFullscreenChange', handleFullscreenChange)
-    }
-  }, [])
-
-  // ESCキーでフルスクリーン終了の処理
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && isFullscreen) {
-        exitFullscreen()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown)
-    }
-  }, [isFullscreen])
 
   // コントローラー選出
   useEffect(() => {
@@ -207,47 +173,6 @@ export function useSoccerTimer() {
     updateFirebaseControl("stopped")
   }
 
-  const enterFullscreen = async () => {
-    try {
-      const element = document.documentElement
-      if (element.requestFullscreen) {
-        await element.requestFullscreen()
-      } else if ((element as any).webkitRequestFullscreen) {
-        await (element as any).webkitRequestFullscreen()
-      } else if ((element as any).mozRequestFullScreen) {
-        await (element as any).mozRequestFullScreen()
-      } else if ((element as any).msRequestFullscreen) {
-        await (element as any).msRequestFullscreen()
-      }
-    } catch (error) {
-      console.error("フルスクリーン開始エラー:", error)
-    }
-  }
-
-  const exitFullscreen = async () => {
-    try {
-      if (document.exitFullscreen) {
-        await document.exitFullscreen()
-      } else if ((document as any).webkitExitFullscreen) {
-        await (document as any).webkitExitFullscreen()
-      } else if ((document as any).mozCancelFullScreen) {
-        await (document as any).mozCancelFullScreen()
-      } else if ((document as any).msExitFullscreen) {
-        await (document as any).msExitFullscreen()
-      }
-    } catch (error) {
-      console.error("フルスクリーン終了エラー:", error)
-    }
-  }
-
-  const toggleFullscreen = () => {
-    if (isFullscreen) {
-      exitFullscreen()
-    } else {
-      enterFullscreen()
-    }
-  }
-
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -257,13 +182,11 @@ export function useSoccerTimer() {
   return {
     currentTime,
     state,
-    isFullscreen,
     isConnected,
     isController,
     startTimer,
     stopTimer,
     resetTimer,
-    toggleFullscreen,
     formatTime,
   }
 }
