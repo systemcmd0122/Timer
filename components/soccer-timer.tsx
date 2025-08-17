@@ -26,11 +26,22 @@ export function SoccerTimer() {
   const [isMobile, setIsMobile] = useState(false)
   const [showMobileMenu, setShowMobileMenu] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isOBSMode, setIsOBSMode] = useState(false)
 
-  // URLパラメータからフルスクリーン状態を取得
+  // URLパラメータからモード設定を取得
   useEffect(() => {
     const fullscreenParam = searchParams.get('fullscreen')
+    const obsParam = searchParams.get('obs')
+    const modeParam = searchParams.get('mode')
+    
     setIsFullscreen(fullscreenParam === 'true')
+    setIsOBSMode(obsParam === 'true')
+    
+    if (modeParam === 'control') {
+      setViewMode('control')
+    } else {
+      setViewMode('display')
+    }
   }, [searchParams])
 
   // モバイル判定
@@ -165,6 +176,25 @@ export function SoccerTimer() {
   const handleQuickSkip = (minutes: number) => {
     if (!isController) return
     skipToTime(minutes * 60)
+  }
+
+  // OBSモード（完全にクリーンな表示）
+  if (isOBSMode) {
+    return (
+      <div className="w-full h-full bg-transparent flex items-center justify-center">
+        <div className="text-center w-full h-full flex flex-col items-center justify-center">
+          {/* タイマー表示のみ */}
+          <div className="text-white font-mono font-bold text-[12vw] leading-none drop-shadow-lg">
+            {formatTime(currentTime)}
+          </div>
+          
+          {/* 状態表示（小さく） */}
+          <div className="text-white/80 text-[2vw] mt-4 drop-shadow-lg">
+            {state === "running" ? "⏱️ 実行中" : state === "paused" ? "⏸️ 一時停止" : "⏹️ 停止中"}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   // フルスクリーン表示モード
@@ -302,6 +332,27 @@ export function SoccerTimer() {
                     <span className="text-red-600 font-medium">切断</span>
                   </>
                 )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 pt-6 border-t">
+            <h4 className="text-lg font-semibold mb-4">URL設定</h4>
+            <div className="space-y-3 text-sm">
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <strong>OBS用:</strong><br/>
+                <code className="text-xs">?obs=true</code><br/>
+                <span className="text-gray-600">完全クリーン表示</span>
+              </div>
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <strong>フルスクリーン:</strong><br/>
+                <code className="text-xs">?fullscreen=true</code><br/>
+                <span className="text-gray-600">全画面表示で開始</span>
+              </div>
+              <div className="bg-gray-100 p-3 rounded-lg">
+                <strong>操作モード:</strong><br/>
+                <code className="text-xs">?mode=control</code><br/>
+                <span className="text-gray-600">操作画面で開始</span>
               </div>
             </div>
           </div>
@@ -562,7 +613,7 @@ export function SoccerTimer() {
           )}
 
           {/* 情報表示 */}
-          <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 sm:p-6">
+          <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 sm:p-6 mb-6">
             <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2">
               {isController ? "操作端末モード" : "表示専用モード"}
             </h3>
@@ -581,6 +632,41 @@ export function SoccerTimer() {
               フルスクリーン表示にするとURLに?fullscreen=trueパラメータが追加され、
               直接このURLにアクセスすることでフルスクリーン表示を開始できます。
             </p>
+          </div>
+
+          {/* URL設定ガイド */}
+          <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-blue-800 mb-4">
+              OBS Studio / 配信用設定
+            </h3>
+            <div className="space-y-3 text-sm sm:text-base text-blue-700">
+              <div className="bg-white p-3 rounded border">
+                <strong>OBS用クリーン表示:</strong><br/>
+                <code className="bg-gray-100 px-2 py-1 rounded">?obs=true</code><br/>
+                <span className="text-gray-600 text-sm">背景透明、ボタン一切なしの完全クリーン表示</span>
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <strong>フルスクリーン自動開始:</strong><br/>
+                <code className="bg-gray-100 px-2 py-1 rounded">?fullscreen=true</code><br/>
+                <span className="text-gray-600 text-sm">ページ読み込み時に自動的にフルスクリーン表示</span>
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <strong>操作画面で開始:</strong><br/>
+                <code className="bg-gray-100 px-2 py-1 rounded">?mode=control</code><br/>
+                <span className="text-gray-600 text-sm">操作画面モードで開始</span>
+              </div>
+              <div className="bg-white p-3 rounded border">
+                <strong>組み合わせ例:</strong><br/>
+                <code className="bg-gray-100 px-2 py-1 rounded">?obs=true&fullscreen=true</code><br/>
+                <span className="text-gray-600 text-sm">OBS用フルスクリーン表示</span>
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
+              <p className="text-sm text-yellow-800">
+                <strong>OBS設定のコツ:</strong> ブラウザソースで「?obs=true」パラメータ付きURLを使用し、
+                幅1920px、高さ1080pxに設定すると最適な表示になります。
+              </p>
+            </div>
           </div>
         </div>
       </div>
