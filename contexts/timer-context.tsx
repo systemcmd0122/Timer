@@ -61,7 +61,7 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           saveTimerState(newState)
           return newState
         })
-      }, 100) // 100msごとに更新
+      }, 50) // 50msごとに更新でよりリアルタイム
     } else {
       if (intervalRef.current) {
         clearInterval(intervalRef.current)

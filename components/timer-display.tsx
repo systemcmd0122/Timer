@@ -24,7 +24,8 @@ export const TimerDisplay: React.FC<TimerDisplayProps> = ({ className, size = "l
     <div
       className={cn(
         "font-mono font-bold text-center select-none",
-        size === "xl" && "tracking-wider drop-shadow-2xl",
+        "bg-white text-black",
+        size === "xl" && "tracking-wider drop-shadow-lg",
         sizeClasses[size],
         className,
       )}

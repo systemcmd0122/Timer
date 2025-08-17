@@ -60,18 +60,21 @@ const loadFromLocalStorage = (): TimerState | null => {
 export const saveTimerState = async (state: TimerState) => {
   if (isFirebaseAvailable && database) {
     try {
-      await set(ref(database, TIMER_REF), {
+      const writePromise = set(ref(database, TIMER_REF), {
         ...state,
         lastUpdated: Date.now(),
       })
+
+      // 即座にローカルストレージにも保存してローカル表示を更新
+      saveToLocalStorage(state)
+
+      await writePromise
       console.log("[v0] Saved to Firebase successfully")
     } catch (error) {
       console.error("Failed to save timer state to Firebase:", error)
-      // Firebase失敗時はローカルストレージにフォールバック
       saveToLocalStorage(state)
     }
   } else {
-    // Firebase利用不可時はローカルストレージを使用
     saveToLocalStorage(state)
   }
 }
@@ -110,8 +113,10 @@ export const subscribeToTimerState = (callback: (state: TimerState | null) => vo
         timerRef,
         (snapshot) => {
           const data = snapshot.val()
-          console.log("[v0] Firebase subscription update:", data)
-          callback(data)
+          if (data) {
+            console.log("[v0] Firebase subscription update:", data)
+            callback(data)
+          }
         },
         (error) => {
           console.error("Firebase subscription error:", error)
@@ -122,11 +127,9 @@ export const subscribeToTimerState = (callback: (state: TimerState | null) => vo
       return () => off(timerRef, "value", unsubscribe)
     } catch (error) {
       console.error("Failed to subscribe to Firebase:", error)
-      // Firebase失敗時はローカルイベントリスナーを使用
       return setupLocalSubscription(callback)
     }
   } else {
-    // Firebase利用不可時はローカルイベントリスナーを使用
     return setupLocalSubscription(callback)
   }
 }

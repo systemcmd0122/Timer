@@ -19,16 +19,16 @@ export default function Home() {
             </CardHeader>
 
             <CardContent className="space-y-8">
-              <div className="bg-gray-900 rounded-lg p-8">
-                <TimerDisplay className="text-green-400" />
+              <div className="bg-white rounded-lg p-8 border">
+                <TimerDisplay className="text-black" />
               </div>
 
               <TimerControls />
 
               <div className="flex gap-4 justify-center">
                 <Link href="/display">
-                  <Button variant="outline" className="bg-black text-green-400 hover:bg-gray-800">
-                    📺 表示用ページ
+                  <Button variant="outline" className="bg-white text-black border-black hover:bg-gray-100">
+                    📺 全画面表示
                   </Button>
                 </Link>
                 <Link href="/remote">
@@ -40,7 +40,7 @@ export default function Home() {
 
               <div className="text-center text-sm text-muted-foreground space-y-2">
                 <p>💡 使い方:</p>
-                <p>• 表示用ページ - 配信用の大きな表示</p>
+                <p>• 全画面表示 - 配信用の大きな表示</p>
                 <p>• リモート操作ページ - 別端末からの操作用</p>
                 <p>• リモートモードをONにして複数端末で同期</p>
               </div>
