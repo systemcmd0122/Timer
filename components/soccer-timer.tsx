@@ -2,7 +2,7 @@
 
 import { useSoccerTimer } from "@/hooks/use-soccer-timer"
 import { Button } from "@/components/ui/button"
-import { Play, Pause, RotateCcw, Maximize, Wifi, WifiOff, Settings, Eye, Monitor, Gamepad2, Menu, X, Minimize, Clock, Timer } from "lucide-react"
+import { Play, Pause, RotateCcw, Maximize, Wifi, WifiOff, Settings, Eye, Monitor, Gamepad2, Menu, X, Clock, Timer } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -197,53 +197,17 @@ export function SoccerTimer() {
     )
   }
 
-  // フルスクリーン表示モード
+  // フルスクリーン表示モード（ボタンを一切表示しない）
   if (isFullscreen) {
     return (
       <div className="fixed inset-0 bg-white flex items-center justify-center z-50">
         <div className="text-center px-4 relative w-full h-full flex items-center justify-center">
-          {/* フルスクリーン終了ボタン */}
-          <Button
-            onClick={exitFullscreen}
-            variant="ghost"
-            size="sm"
-            className="absolute top-4 right-4 z-10 bg-black/10 hover:bg-black/20 text-black"
-          >
-            <Minimize className="w-6 h-6" />
-          </Button>
-          
+          {/* タイマー表示のみ - ボタンは一切表示しない */}
           <div className={`text-black font-mono font-bold leading-none ${
             isMobile ? 'text-[8rem] sm:text-[12rem]' : 'text-[20rem]'
           }`}>
             {formatTime(currentTime)}
           </div>
-          
-          {/* フルスクリーン用コントロール（モバイルのみ、コントローラーの場合） */}
-          {isMobile && isController && (
-            <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 flex gap-4">
-              <Button
-                onClick={state === "running" ? stopTimer : startTimer}
-                variant={state === "running" ? "destructive" : "default"}
-                size="lg"
-                className="w-20 h-20 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 transition-colors touch-manipulation"
-              >
-                {state === "running" ? (
-                  <Pause className="w-10 h-10 text-white" />
-                ) : (
-                  <Play className="w-10 h-10 text-white" />
-                )}
-              </Button>
-
-              <Button 
-                onClick={resetTimer} 
-                variant="outline"
-                size="lg" 
-                className="w-20 h-20 rounded-full shadow-lg bg-white border-4 border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
-              >
-                <RotateCcw className="w-8 h-8 text-gray-700" />
-              </Button>
-            </div>
-          )}
         </div>
       </div>
     )
@@ -663,7 +627,7 @@ export function SoccerTimer() {
             </div>
             <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded">
               <p className="text-sm text-yellow-800">
-                <strong>OBS設定のコツ:</strong> ブラウザソースで「?obs=true」パラメータ付きURLを使用し、
+                <strong>OBS設定のコツ:</strong> ブラウザソースで「?obs=true」パラメータ付URLを使用し、
                 幅1920px、高さ1080pxに設定すると最適な表示になります。
               </p>
             </div>
