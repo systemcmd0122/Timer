@@ -2,7 +2,7 @@
 
 import { useSoccerTimer } from "@/hooks/use-soccer-timer"
 import { Button } from "@/components/ui/button"
-import { Play, Pause, RotateCcw, Maximize, Wifi, WifiOff, Settings, Eye, Monitor, Gamepad2, Menu, X, Minimize } from "lucide-react"
+import { Play, Pause, RotateCcw, Maximize, Wifi, WifiOff, Settings, Eye, Monitor, Gamepad2, Menu, X, Minimize, Clock, Timer } from "lucide-react"
 import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from 'next/navigation'
 
@@ -18,6 +18,7 @@ export function SoccerTimer() {
     startTimer,
     stopTimer,
     resetTimer,
+    skipToTime,
     formatTime,
   } = useSoccerTimer()
 
@@ -158,6 +159,12 @@ export function SoccerTimer() {
     } else {
       enterFullscreen()
     }
+  }
+
+  // クイックスキップ機能
+  const handleQuickSkip = (minutes: number) => {
+    if (!isController) return
+    skipToTime(minutes * 60)
   }
 
   // フルスクリーン表示モード
@@ -366,6 +373,7 @@ export function SoccerTimer() {
             {/* 操作ボタン */}
             {isController ? (
               <>
+                {/* メイン操作ボタン */}
                 <div className="space-y-4 sm:space-y-6 mb-6 sm:mb-8">
                   <Button
                     onClick={state === "running" ? stopTimer : startTimer}
@@ -403,6 +411,35 @@ export function SoccerTimer() {
                     <Maximize className="w-6 h-6 sm:w-8 sm:h-8 mr-3 sm:mr-4" />
                     全画面表示
                   </Button>
+                </div>
+
+                {/* クイックスキップボタン */}
+                <div className="bg-gray-800/50 border-2 border-gray-600 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8">
+                  <div className="flex items-center gap-3 mb-4">
+                    <Timer className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400" />
+                    <h3 className="text-lg sm:text-xl font-semibold text-yellow-400">クイックスキップ</h3>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                    <Button
+                      onClick={() => handleQuickSkip(45)}
+                      className="text-lg sm:text-xl py-4 sm:py-6 bg-yellow-600 hover:bg-yellow-700 active:bg-yellow-800 transition-colors touch-manipulation"
+                      disabled={state === "running"}
+                    >
+                      <Clock className="w-5 h-5 sm:w-6 sm:h-6 mr-2" />
+                      45分
+                    </Button>
+                    <Button
+                      onClick={() => handleQuickSkip(90)}
+                      className="text-lg sm:text-xl py-4 sm:py-6 bg-yellow-600 hover:bg-yellow-700 active:bg-yellow-800 transition-colors touch-manipulation"
+                      disabled={state === "running"}
+                    >
+                      <Clock className="w-5 h-5 sm:w-6 sm:h-6 mr-2" />
+                      90分
+                    </Button>
+                  </div>
+                  <p className="text-xs sm:text-sm text-gray-400 mt-3">
+                    ※ タイマー停止中またはリセット後のみ使用可能
+                  </p>
                 </div>
 
                 <div className="bg-green-800/20 border-2 border-green-600 rounded-lg p-4 sm:p-6">
@@ -500,99 +537,51 @@ export function SoccerTimer() {
               <div className="text-lg sm:text-xl md:text-2xl text-gray-600 mb-4 sm:mb-6 md:mb-8">
                 状態: {state === "running" ? "実行中" : state === "paused" ? "一時停止" : "停止中"}
               </div>
-              {!isController && (
-                <div className="text-sm sm:text-base md:text-lg text-gray-600 mb-2 sm:mb-4">
-                  ※ 操作端末でのみタイマーを操作できます
-                </div>
-              )}
+              <div className="text-sm sm:text-base md:text-lg text-gray-600 mb-2 sm:mb-4">
+                {isController 
+                  ? "※ この端末から操作可能です" 
+                  : "※ 操作端末でのみタイマーを操作できます"
+                }
+              </div>
             </div>
           </div>
 
-          {/* 操作ボタン（デスクトップのみ） */}
+          {/* 全画面ボタン（デスクトップのみ） */}
           {!isMobile && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-              <Button
-                onClick={state === "running" ? stopTimer : startTimer}
-                variant={state === "running" ? "destructive" : "default"}
-                size="lg"
-                className="text-xl py-6"
-                disabled={!isController}
-              >
-                {state === "running" ? (
-                  <>
-                    <Pause className="w-6 h-6 mr-2" />
-                    ストップ
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-6 h-6 mr-2" />
-                    スタート
-                  </>
-                )}
-              </Button>
-
-              <Button 
-                onClick={resetTimer} 
-                variant="outline" 
-                size="lg" 
-                className="text-xl py-6 bg-transparent"
-                disabled={!isController}
-              >
-                <RotateCcw className="w-6 h-6 mr-2" />
-                リセット
-              </Button>
-
+            <div className="flex justify-center mb-8">
               <Button 
                 onClick={toggleFullscreen} 
                 variant="outline" 
                 size="lg" 
-                className="text-xl py-6 bg-transparent"
+                className="text-xl py-6 px-8 bg-transparent border-2 border-gray-300 hover:border-gray-400"
               >
-                <Maximize className="w-6 h-6 mr-2" />
-                全画面
-              </Button>
-            </div>
-          )}
-
-          {/* モバイル用フローティングアクションボタン */}
-          {isMobile && isController && (
-            <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 z-30">
-              <Button
-                onClick={state === "running" ? stopTimer : startTimer}
-                variant={state === "running" ? "destructive" : "default"}
-                size="lg"
-                className="w-16 h-16 rounded-full shadow-lg bg-blue-600 hover:bg-blue-700 active:bg-blue-800 transition-colors touch-manipulation"
-              >
-                {state === "running" ? (
-                  <Pause className="w-8 h-8" />
-                ) : (
-                  <Play className="w-8 h-8" />
-                )}
-              </Button>
-
-              <Button 
-                onClick={resetTimer} 
-                variant="outline"
-                size="lg" 
-                className="w-16 h-16 rounded-full shadow-lg bg-white border-2 border-gray-300 hover:bg-gray-50 active:bg-gray-100 transition-colors touch-manipulation"
-              >
-                <RotateCcw className="w-6 h-6 text-gray-700" />
+                <Maximize className="w-6 h-6 mr-3" />
+                全画面表示
               </Button>
             </div>
           )}
 
           {/* 情報表示 */}
-          {!isController && (
-            <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 sm:p-6">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2">表示専用モード</h3>
-              <p className="text-sm sm:text-base text-gray-700">
-                このデバイスは表示専用モードです。タイマーの操作は操作端末でのみ可能です。
-                タイマーの状態は自動的に同期され、すべての端末で同じ時刻が表示されます。
-                フルスクリーン表示にするとURLに?fullscreen=trueパラメータが追加され、
-                直接このURLにアクセスすることでフルスクリーン表示を開始できます。
-              </p>
-            </div>
-          )}
+          <div className="bg-gray-50 border-2 border-gray-200 rounded-lg p-4 sm:p-6">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2">
+              {isController ? "操作端末モード" : "表示専用モード"}
+            </h3>
+            <p className="text-sm sm:text-base text-gray-700">
+              {isController ? (
+                <>
+                  この端末でタイマーを操作できます。操作画面に切り替えると、より詳細な操作が可能になります。
+                  クイックスキップ機能で45分や90分にすぐに設定できます。
+                </>
+              ) : (
+                <>
+                  このデバイスは表示専用モードです。タイマーの操作は操作端末でのみ可能です。
+                  タイマーの状態は自動的に同期され、すべての端末で同じ時刻が表示されます。
+                </>
+              )}
+              フルスクリーン表示にするとURLに?fullscreen=trueパラメータが追加され、
+              直接このURLにアクセスすることでフルスクリーン表示を開始できます。
+            </p>
+          </div>
         </div>
       </div>
     </div>

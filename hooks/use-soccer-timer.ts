@@ -9,6 +9,7 @@ export type TimerState = "stopped" | "running" | "paused"
 interface TimerControl {
   state: TimerState
   lastStateChange: number
+  currentTime: number
   controllerId?: string
 }
 
@@ -78,22 +79,23 @@ export function useSoccerTimer() {
         const data = snapshot.val() as TimerControl | null
         if (data) {
           const newState = data.state
+          const syncTime = data.currentTime || 0
           
           if (state !== newState) {
             const now = Date.now()
             
             if (newState === "running") {
               if (state === "stopped") {
-                startTimeRef.current = now
-                pausedTimeRef.current = 0
-                setCurrentTime(0)
+                startTimeRef.current = now - (syncTime * 1000)
+                pausedTimeRef.current = syncTime
+                setCurrentTime(syncTime)
               } else if (state === "paused") {
-                startTimeRef.current = now - (pausedTimeRef.current * 1000)
+                startTimeRef.current = now - (syncTime * 1000)
+                pausedTimeRef.current = syncTime
               }
             } else if (newState === "paused" && state === "running") {
-              const elapsed = Math.floor((now - (startTimeRef.current || now)) / 1000)
-              pausedTimeRef.current = elapsed
-              setCurrentTime(elapsed)
+              pausedTimeRef.current = syncTime
+              setCurrentTime(syncTime)
             } else if (newState === "stopped") {
               startTimeRef.current = null
               pausedTimeRef.current = 0
@@ -101,6 +103,16 @@ export function useSoccerTimer() {
             }
             
             setState(newState)
+          } else {
+            // 同じ状態でも時間の同期を行う
+            if (newState === "paused" || newState === "stopped") {
+              setCurrentTime(syncTime)
+              pausedTimeRef.current = syncTime
+            } else if (newState === "running" && startTimeRef.current) {
+              // 実行中の場合は、同期された時間を基準に開始時間を調整
+              const now = Date.now()
+              startTimeRef.current = now - (syncTime * 1000)
+            }
           }
           
           setIsConnected(true)
@@ -139,11 +151,13 @@ export function useSoccerTimer() {
     }
   }, [state])
 
-  const updateFirebaseControl = async (newState: TimerState) => {
+  const updateFirebaseControl = async (newState: TimerState, time?: number) => {
     try {
+      const currentTimeToSend = time !== undefined ? time : currentTime
       const controlData: TimerControl = {
         state: newState,
         lastStateChange: Date.now(),
+        currentTime: currentTimeToSend,
         controllerId: clientIdRef.current
       }
       await set(timerControlRef, controlData)
@@ -156,7 +170,16 @@ export function useSoccerTimer() {
     if (!isController) return
     
     if (state === "stopped" || state === "paused") {
-      updateFirebaseControl("running")
+      const now = Date.now()
+      if (state === "stopped") {
+        startTimeRef.current = now
+        pausedTimeRef.current = 0
+        setCurrentTime(0)
+        updateFirebaseControl("running", 0)
+      } else if (state === "paused") {
+        startTimeRef.current = now - (pausedTimeRef.current * 1000)
+        updateFirebaseControl("running", pausedTimeRef.current)
+      }
     }
   }
 
@@ -164,13 +187,33 @@ export function useSoccerTimer() {
     if (!isController) return
     
     if (state === "running") {
-      updateFirebaseControl("paused")
+      const now = Date.now()
+      const elapsed = Math.floor((now - (startTimeRef.current || now)) / 1000)
+      pausedTimeRef.current = elapsed
+      setCurrentTime(elapsed)
+      updateFirebaseControl("paused", elapsed)
     }
   }
 
   const resetTimer = () => {
     if (!isController) return
-    updateFirebaseControl("stopped")
+    startTimeRef.current = null
+    pausedTimeRef.current = 0
+    setCurrentTime(0)
+    updateFirebaseControl("stopped", 0)
+  }
+
+  const skipToTime = (targetSeconds: number) => {
+    if (!isController || state === "running") return
+    
+    pausedTimeRef.current = targetSeconds
+    setCurrentTime(targetSeconds)
+    
+    if (state === "stopped") {
+      updateFirebaseControl("stopped", targetSeconds)
+    } else if (state === "paused") {
+      updateFirebaseControl("paused", targetSeconds)
+    }
   }
 
   const formatTime = (seconds: number): string => {
@@ -187,6 +230,7 @@ export function useSoccerTimer() {
     startTimer,
     stopTimer,
     resetTimer,
+    skipToTime,
     formatTime,
   }
 }
