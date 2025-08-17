@@ -37,19 +37,19 @@ try {
 const TIMER_REF = "soccer-timer"
 const LOCAL_STORAGE_KEY = "soccer-timer-state"
 
-const saveToLocalStorage = (state: TimerState) => {
+const saveToLocalStorage = (state: TimerState, key: string = LOCAL_STORAGE_KEY) => {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state))
+    localStorage.setItem(key, JSON.stringify(state))
     // ローカルモードでも他のタブに通知
-    window.dispatchEvent(new CustomEvent("timer-update", { detail: state }))
+    window.dispatchEvent(new CustomEvent(`timer-update-${key}`, { detail: state }))
   } catch (error) {
     console.error("Failed to save to localStorage:", error)
   }
 }
 
-const loadFromLocalStorage = (): TimerState | null => {
+const loadFromLocalStorage = (key: string = LOCAL_STORAGE_KEY): TimerState | null => {
   try {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY)
+    const saved = localStorage.getItem(key)
     return saved ? JSON.parse(saved) : null
   } catch (error) {
     console.error("Failed to load from localStorage:", error)
@@ -57,38 +57,44 @@ const loadFromLocalStorage = (): TimerState | null => {
   }
 }
 
-export const saveTimerState = async (state: TimerState) => {
+export const saveTimerState = async (state: TimerState, sessionId?: string) => {
+  const timerRef = sessionId ? `soccer-timer/${sessionId}` : TIMER_REF
+  const localStorageKey = sessionId ? `${LOCAL_STORAGE_KEY}-${sessionId}` : LOCAL_STORAGE_KEY
+
   if (isFirebaseAvailable && database) {
     try {
-      const writePromise = set(ref(database, TIMER_REF), {
+      const writePromise = set(ref(database, timerRef), {
         ...state,
         lastUpdated: Date.now(),
       })
 
       // 即座にローカルストレージにも保存してローカル表示を更新
-      saveToLocalStorage(state)
+      saveToLocalStorage(state, localStorageKey)
 
       await writePromise
-      console.log("[v0] Saved to Firebase successfully")
+      console.log("[v0] Saved to Firebase successfully for session:", sessionId || "default")
     } catch (error) {
       console.error("Failed to save timer state to Firebase:", error)
-      saveToLocalStorage(state)
+      saveToLocalStorage(state, localStorageKey)
     }
   } else {
-    saveToLocalStorage(state)
+    saveToLocalStorage(state, localStorageKey)
   }
 }
 
-export const loadTimerState = async (): Promise<TimerState | null> => {
+export const loadTimerState = async (sessionId?: string): Promise<TimerState | null> => {
+  const timerRef = sessionId ? `soccer-timer/${sessionId}` : TIMER_REF
+  const localStorageKey = sessionId ? `${LOCAL_STORAGE_KEY}-${sessionId}` : LOCAL_STORAGE_KEY
+
   if (isFirebaseAvailable && database) {
     try {
       return new Promise((resolve) => {
-        const timerRef = ref(database, TIMER_REF)
+        const timerRefPath = ref(database, timerRef)
         onValue(
-          timerRef,
+          timerRefPath,
           (snapshot) => {
             const data = snapshot.val()
-            console.log("[v0] Loaded from Firebase:", data)
+            console.log("[v0] Loaded from Firebase for session:", sessionId || "default", data)
             resolve(data)
           },
           { onlyOnce: true },
@@ -96,25 +102,27 @@ export const loadTimerState = async (): Promise<TimerState | null> => {
       })
     } catch (error) {
       console.error("Failed to load timer state from Firebase:", error)
-      return loadFromLocalStorage()
+      return loadFromLocalStorage(localStorageKey)
     }
   } else {
-    // Firebase利用不可時はローカルストレージから読み込み
-    return loadFromLocalStorage()
+    return loadFromLocalStorage(localStorageKey)
   }
 }
 
-export const subscribeToTimerState = (callback: (state: TimerState | null) => void) => {
+export const subscribeToTimerState = (callback: (state: TimerState | null) => void, sessionId?: string) => {
+  const timerRef = sessionId ? `soccer-timer/${sessionId}` : TIMER_REF
+  const localStorageKey = sessionId ? `${LOCAL_STORAGE_KEY}-${sessionId}` : LOCAL_STORAGE_KEY
+
   if (isFirebaseAvailable && database) {
     try {
-      const timerRef = ref(database, TIMER_REF)
+      const timerRefPath = ref(database, timerRef)
 
       const unsubscribe = onValue(
-        timerRef,
+        timerRefPath,
         (snapshot) => {
           const data = snapshot.val()
           if (data) {
-            console.log("[v0] Firebase subscription update:", data)
+            console.log("[v0] Firebase subscription update for session:", sessionId || "default", data)
             callback(data)
           }
         },
@@ -124,33 +132,36 @@ export const subscribeToTimerState = (callback: (state: TimerState | null) => vo
         },
       )
 
-      return () => off(timerRef, "value", unsubscribe)
+      return () => off(timerRefPath, "value", unsubscribe)
     } catch (error) {
       console.error("Failed to subscribe to Firebase:", error)
-      return setupLocalSubscription(callback)
+      return setupLocalSubscription(callback, localStorageKey)
     }
   } else {
-    return setupLocalSubscription(callback)
+    return setupLocalSubscription(callback, localStorageKey)
   }
 }
 
-const setupLocalSubscription = (callback: (state: TimerState | null) => void) => {
+const setupLocalSubscription = (callback: (state: TimerState | null) => void, key: string = LOCAL_STORAGE_KEY) => {
   const handleStorageChange = (event: CustomEvent<TimerState>) => {
-    console.log("[v0] Local subscription update:", event.detail)
+    console.log("[v0] Local subscription update for key:", key, event.detail)
     callback(event.detail)
   }
 
-  window.addEventListener("timer-update", handleStorageChange as EventListener)
+  window.addEventListener(`timer-update-${key}`, handleStorageChange as EventListener)
 
   return () => {
-    window.removeEventListener("timer-update", handleStorageChange as EventListener)
+    window.removeEventListener(`timer-update-${key}`, handleStorageChange as EventListener)
   }
 }
 
-export const clearTimerState = async () => {
+export const clearTimerState = async (sessionId?: string) => {
+  const timerRef = sessionId ? `soccer-timer/${sessionId}` : TIMER_REF
+  const localStorageKey = sessionId ? `${LOCAL_STORAGE_KEY}-${sessionId}` : LOCAL_STORAGE_KEY
+
   if (isFirebaseAvailable && database) {
     try {
-      await set(ref(database, TIMER_REF), null)
+      await set(ref(database, timerRef), null)
     } catch (error) {
       console.error("Failed to clear timer state:", error)
     }
@@ -158,7 +169,7 @@ export const clearTimerState = async () => {
 
   // ローカルストレージもクリア
   try {
-    localStorage.removeItem(LOCAL_STORAGE_KEY)
+    localStorage.removeItem(localStorageKey)
   } catch (error) {
     console.error("Failed to clear localStorage:", error)
   }

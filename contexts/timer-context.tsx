@@ -9,6 +9,8 @@ interface TimerContextType {
   elapsedTime: number
   formattedTime: string
   remoteMode: boolean
+  sessionId: string | null
+  setSessionId: (id: string) => void
   startTimer: () => void
   stopTimer: () => void
   resetTimer: () => void
@@ -28,6 +30,7 @@ export const useTimer = () => {
 }
 
 export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [sessionId, setSessionIdState] = useState<string | null>(null)
   const [timerState, setTimerState] = useState<TimerState>({
     isRunning: false,
     startTime: null,
@@ -37,6 +40,27 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   })
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const unsubscribeRef = useRef<(() => void) | null>(null)
+
+  useEffect(() => {
+    if (unsubscribeRef.current) {
+      unsubscribeRef.current()
+    }
+
+    if (sessionId) {
+      unsubscribeRef.current = subscribeToTimerState((state) => {
+        if (state) {
+          setTimerState(state)
+        }
+      }, sessionId)
+    }
+
+    return () => {
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current()
+      }
+    }
+  }, [sessionId])
 
   useEffect(() => {
     const unsubscribe = subscribeToTimerState((state) => {
@@ -58,7 +82,7 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             elapsedTime: prev.startTime ? Date.now() - prev.startTime : 0,
             lastUpdated: Date.now(),
           }
-          saveTimerState(newState)
+          saveTimerState(newState, sessionId)
           return newState
         })
       }, 50) // 50msごとに更新でよりリアルタイム
@@ -74,11 +98,13 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         clearInterval(intervalRef.current)
       }
     }
-  }, [timerState.isRunning, timerState.startTime])
+  }, [timerState.isRunning, timerState.startTime, sessionId])
 
   const updateState = (newState: TimerState) => {
     setTimerState(newState)
-    saveTimerState(newState)
+    if (sessionId) {
+      saveTimerState(newState, sessionId)
+    }
   }
 
   const startTimer = () => {
@@ -156,6 +182,10 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const currentElapsedTime =
     timerState.isRunning && timerState.startTime ? Date.now() - timerState.startTime : timerState.elapsedTime
 
+  const setSessionId = (id: string) => {
+    setSessionIdState(id)
+  }
+
   return (
     <TimerContext.Provider
       value={{
@@ -163,6 +193,8 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         elapsedTime: Math.max(0, currentElapsedTime),
         formattedTime: formatTime(currentElapsedTime),
         remoteMode: timerState.remoteMode,
+        sessionId,
+        setSessionId,
         startTimer,
         stopTimer,
         resetTimer,

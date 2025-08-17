@@ -1,9 +1,19 @@
 "use client"
 
 import { TimerProvider, useTimer } from "@/contexts/timer-context"
+import { useSearchParams } from "next/navigation"
+import { useEffect } from "react"
 
 function DisplayContent() {
-  const { formattedTime } = useTimer()
+  const { formattedTime, setSessionId } = useTimer()
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    const sessionId = searchParams.get("id")
+    if (sessionId) {
+      setSessionId(sessionId)
+    }
+  }, [searchParams, setSessionId])
 
   return (
     <div className="h-screen w-screen bg-white flex items-center justify-center overflow-hidden">
