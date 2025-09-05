@@ -171,15 +171,8 @@ export function useSoccerTimer() {
     
     if (state === "stopped" || state === "paused") {
       const now = Date.now()
-      if (state === "stopped") {
-        startTimeRef.current = now
-        pausedTimeRef.current = 0
-        setCurrentTime(0)
-        updateFirebaseControl("running", 0)
-      } else if (state === "paused") {
-        startTimeRef.current = now - (pausedTimeRef.current * 1000)
-        updateFirebaseControl("running", pausedTimeRef.current)
-      }
+      startTimeRef.current = now - (pausedTimeRef.current * 1000)
+      updateFirebaseControl("running", pausedTimeRef.current)
     }
   }
 
